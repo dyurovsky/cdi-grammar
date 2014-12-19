@@ -9,3 +9,7 @@
 
 # RStudio files
 .Rproj.user/
+
+# Other stuff
+.DS_Store
+$*.xlsx
