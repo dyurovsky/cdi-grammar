@@ -20,25 +20,39 @@ library(directlabels)
 Load in Wordbank tata
 ```{r}
 ## OPEN DATABASE CONNECTION ##
-wordbank <- src_mysql(dbname='wordbank',host="54.200.225.86", 
+wordbank <- src_mysql(dbname='wordbank',host="54.149.39.46",
                       user="wordbank",password="wordbank")
+#wordbank <- src_mysql(dbname='wordbank',host="54.200.225.86",
+#                      user="wordbank",password="wordbank")
 
 ## NOW LOAD TABLES ##
 admin.table <- tbl(wordbank,"common_administration")
 child.table <- tbl(wordbank,"common_child")
-ws.table <- tbl(wordbank,"instruments_ws")
+wordmapping.table <- tbl(wordbank,"common_wordmapping")
+instruments.table <- tbl(wordbank,"common_instrumentsmap")
+english.ws.table <- tbl(wordbank,"instruments_english_ws")
 ```
 
 Pull data out of the wordbank tables
 ```{r,message=FALSE}
-ws.words <- as.data.frame(select(ws.table,
-                                       basetable_ptr_id,
-                                       col_baabaa:col_connthen)) %>%
+mapping <- as.data.frame(wordmapping.table)
+instruments <- as.data.frame(instruments.table) %>%
+  rename(instrument_id = id)
+items <- left_join(mapping, instruments)
+english.ws.items <- items %>% filter(language == 'English', form == 'WS') %>%
+  select(item, type, category, lexical_category)
+
+english.ws.data <- as.data.frame(english.ws.table) %>%
   rename(id = basetable_ptr_id) %>% # Rename the id
-  gather(word,produces,col_baabaa:col_connthen) %>% # Arrange in longform
-  mutate(word = str_replace(word, "col_", "")) %>% # Strip off col_ from words
+  gather(item,value,-id) %>% # Arrange in longform
+  mutate(item = str_replace(item, "item_", "")) # Strip off item_ from items
+
+english.ws <- left_join(english.ws.data, english.ws.items)
+
+english.ws.vocab.scores <- english.ws %>%
+  filter(type == 'word') %>%
   group_by(id) %>%
-  summarise(vocab = sum(produces))
+  summarise(vocab = sum(value == 'produces'))
 
 ws.syntax <- as.data.frame(select(ws.table,
                                        basetable_ptr_id,
@@ -67,7 +81,7 @@ admins <- admin.table %>%
 admins <- as.data.frame(admins)
 
 # Get demographic variables for each child
-demos <- select(child.table,id,gender,mom_ed,birth_order) %>%
+demos <- select(child.table,id,sex,mom_ed,birth_order) %>%
   rename(child.id = id) # Rename id fields
 demos <- as.data.frame(demos)
 
