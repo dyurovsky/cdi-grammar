@@ -1,12 +1,13 @@
 ---
 title: "Grammatical Category Analysis"
-author: "Dan Yurovsky"
+author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
 date: "December 16, 2014"
 output: html_document
 ---
-  
+
 Load required Libraries
 ```{r, message=FALSE}
+rm(list=ls())
 library(ggplot2)
 library(dplyr)
 library(tidyr)
@@ -31,53 +32,24 @@ child.table <- tbl(wordbank,"common_child")
 wordmapping.table <- tbl(wordbank,"common_wordmapping")
 instruments.table <- tbl(wordbank,"common_instrumentsmap")
 english.ws.table <- tbl(wordbank,"instruments_english_ws")
+norwegian.ws.table <- tbl(wordbank,"instruments_norwegian_ws")
+danish.ws.table <- tbl(wordbank,"instruments_danish_ws")
 ```
 
-Pull data out of the wordbank tables
-```{r,message=FALSE}
-mapping <- as.data.frame(wordmapping.table)
-instruments <- as.data.frame(instruments.table) %>%
-  rename(instrument_id = id)
-items <- left_join(mapping, instruments)
-english.ws.items <- items %>% filter(language == 'English', form == 'WS') %>%
-  select(item, type, category, lexical_category)
+Ad-hoc fix to norwegians.
 
-english.ws.data <- as.data.frame(english.ws.table) %>%
-  rename(id = basetable_ptr_id) %>% # Rename the id
-  gather(item,value,-id) %>% # Arrange in longform
-  mutate(item = str_replace(item, "item_", "")) # Strip off item_ from items
+```{r}
+norwegian.ws.table[is.na(norwegian.ws.table)] = ""
+danish.ws.table[is.na(danish.ws.table)] = ""
+```
 
-english.ws <- left_join(english.ws.data, english.ws.items)
+Get kid data and put together. 
 
-english.ws.vocab.scores <- english.ws %>%
-  filter(type == 'word') %>%
-  group_by(id) %>%
-  summarise(vocab = sum(value == 'produces'))
-
-ws.syntax <- as.data.frame(select(ws.table,
-                                       basetable_ptr_id,
-                                       col_complx01:col_complx37)) %>%
-  rename(id = basetable_ptr_id) %>% # Rename the id
-  gather(word,produces,col_complx01:col_complx37) %>% # Arrange in longform
-  mutate(word = str_replace(word, "col_", "")) %>% # Strip off col_ from words
-  group_by(id) 
-
-bykid.syntax <- summarise(ws.syntax, syntax = mean(produces>= 1))
-
-ws.morpho <- as.data.frame(select(ws.table,
-                                        basetable_ptr_id,
-                                        col_splural:col_ed, 
-                                        col_children:col_went)) %>%
-  rename(id = basetable_ptr_id) %>% # Rename the id
-  gather(word,produces,col_splural:col_went) %>% # Arrange in longform
-  mutate(word = str_replace(word, "col_", "")) %>% # Strip off col_ from words
-  group_by(id) %>%
-  summarise(morpho = mean(produces>=1))
-
-### MERGE OTHER ------------
+```{r}
+# Get administration info
 admins <- admin.table %>%
   select(data_id,child_id,age,source_id) %>%
-  rename(id = data_id, child.id = child_id,source.id = source_id) 
+  rename(id = data_id, child.id = child_id, source.id = source_id) 
 admins <- as.data.frame(admins)
 
 # Get demographic variables for each child
@@ -87,11 +59,113 @@ demos <- as.data.frame(demos)
 
 # Join age and demographics together
 child.data <- as.tbl(left_join(admins,demos))
+```
 
-# join variables
-ws.sums <- left_join(ws.words, bykid.syntax)
-ws.sums <- left_join(ws.sums, ws.morpho)
+Set up mappings and instruments. 
 
+```{r}
+mapping <- as.data.frame(wordmapping.table)
+instruments <- as.data.frame(instruments.table) %>%
+  rename(instrument_id = id)
+items <- left_join(mapping, instruments)
+```
+
+Pull data out of the wordbank tables, in a functional way. 
+
+```{r,message=FALSE}
+aggregate.wdbank <- function(table, items, language, form) {
+  
+  instrument.items <- items %>% filter(language == language, 
+                                       form == form) %>%
+    select(item, type, category, lexical_category)
+  
+  instrument.data <- as.data.frame(table) %>%
+    rename(id = basetable_ptr_id) %>% # Rename the id
+    gather(item, value,-id) %>% # Arrange in longform
+    mutate(item = str_replace(item, "item_", "")) # Strip off item_ 
+  
+  d <- left_join(instrument.data, instrument.items)
+  
+  fprintf(length(d))
+  
+  d.vocab <- d %>%
+    filter(type == "word") %>%
+    group_by(id) %>%
+    summarise(vocab = sum(value == "produces", 
+                          na.rm=TRUE))
+  
+  d.syntax <- d %>%
+    filter(type == "complexity") %>%
+    group_by(id) %>%
+    summarise(complexity = mean(value == "complex", 
+                                na.rm=TRUE))
+  
+  d.wordform <- d %>%
+    filter(type %in% c("word_form")) %>%
+    group_by(id) %>%
+    summarise(wordform = mean(value == "produces", 
+                              na.rm=TRUE))
+  
+  d.ending <- d %>%
+    filter(type %in% c("ending")) %>%
+    group_by(id) %>%
+    summarise(ending_sometimes = mean(value == "sometimes" | 
+                                        value == "often", 
+                                      na.rm=TRUE), 
+              ending_often = mean(value == "often", 
+                                  na.rm=TRUE))
+  
+  d.composite <- left_join(d.vocab, d.syntax)
+  d.composite <- left_join(d.composite, d.wordform)
+  d.composite <- left_join(d.composite, d.ending)
+  
+  d.composite$lang <- language 
+  
+  return(d.composite)
+  }
+```
+
+Run that on stuff.
+
+```{r}
+d.english <- aggregate.wdbank(table=english.ws.table, 
+                              items=items, 
+                              language="English", 
+                              form="WS")
+d.norwegian <- aggregate.wdbank(table=norwegian.ws.table, 
+                                items=items, 
+                                language="Norwegian", 
+                                form="WS")
+d.danish <- aggregate.wdbank(table=danish.ws.table, 
+                                items=items, 
+                                language="Danish", 
+                                form="WS")
+```
+
+Now stick this all in a big data frame. 
+
+```{r}
+d.english$lang <- "English"
+d.norwegian$lang <- "Norwegian"
+d.danish$lang <- "Danish"
+
+d <- rbind_list(d.english,d.norwegian,d.danish)
+d <- left_join(d, child.data)
+d$age.grp <- cut(d$age, breaks=c(0,16,20,24,28,32,36))
+```
+
+Moment of truth!
+
+```{r}
+quartz()
+qplot(vocab, complexity, col=age.grp,
+      facets=~lang,
+      data=d) + 
+  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
+
+
+```{r}
 # filter down
 d <- left_join(ws.sums, child.data) %>%
   filter(syntax > 0, vocab > 0, morpho > 0, 
@@ -157,7 +231,7 @@ ggplot(ms,aes(x = vocab, y = score, colour = measure,label=measure))+
   geom_jitter(size=1)+
   geom_line(aes(y=predicted),size=.5)+
   scale_color_brewer(palette="Set1") +
- scale_x_continuous(limits = c(0,681), breaks = seq(0,680,100),name = "Vocabulary (WS)") + 
+  scale_x_continuous(limits = c(0,681), breaks = seq(0,680,100),name = "Vocabulary (WS)") + 
   scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),"Score (Mean Items)") + 
   theme_bw(base_size = 14) 
 ```
@@ -211,12 +285,12 @@ Compute vocab x age interaction terms for each styntactic item
 ```{r,fig.height=5,fig.width=8}
 # write regression formulas for separately for each item
 formulas <- sapply(names(bykid.syntax.vocab)[8:ncol(bykid.syntax.vocab)],
-       function(x) paste(x ,"~ I(vocab^2)*age + 0",collapse=""))
+                   function(x) paste(x ,"~ I(vocab^2)*age + 0",collapse=""))
 
 # compute interaction terms each item
 interaction.terms <- sapply(formulas, function(x)  
   summary(glm(as.formula(x),data=bykid.syntax.vocab,
-      family="binomial"))$coefficients[3,3])
+              family="binomial"))$coefficients[3,3])
 names(interaction.terms) <- 1:37
 
 #rename results to be human-readable
@@ -239,7 +313,7 @@ ggplot(interaction.terms,
   scale_color_brewer(palette="Set1") + 
   theme(legend.position="none")
 ```  
-  
+
 Leftover analyses
 ```{r}
 #summary(lm(syntax ~ I(vocab^2) * age - 1, data=d))
