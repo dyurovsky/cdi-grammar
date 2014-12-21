@@ -116,13 +116,20 @@ d.danish[d.danish$type %in% c("word_form","word")
 
 Get kid x c(vocab size, composition, syntax, morphology)
 ```{r}
-summarise.language.data <- function(lang.data,lang) {
-  
-  d.vocab <- lang.data %>%
+
+language.vocab.sizes <- function(lang.data) {
+   d.vocab <- lang.data %>%
     filter(type == "word") %>%
     group_by(age,id) %>%
     summarise(vocab.sum = sum(value == "produces", na.rm=TRUE),
               vocab.mean = mean(value == "produces", na.rm=TRUE))
+   
+   return(d.vocab)
+}
+
+summarise.language.data <- function(lang.data,lang) {
+  
+  d.vocab <- language.vocab.sizes(lang.data)
 
   d.complexity <- lang.data %>%
     filter(type == "complexity") %>%
@@ -156,16 +163,96 @@ summarise.language.data <- function(lang.data,lang) {
 }
 ```
 
-Weird source stuff
-# ```{r}
-# source.vocabs <-d.english %>%
-#   group_by(source.id) %>%
-#   summarise(vocab = mean(value=="produces")) %>%
-#   rename(id = source.id)
-# 
-# 
-# View(left_join(source.vocabs,as.data.frame(source.table)))
-# ```
+Vocabulary composition for each language
+```{r}
+vocab.composition <- function(lang.data,lang) {  
+  
+  d.vocab <- language.vocab.sizes(lang.data)
+
+  d.cat <- lang.data %>%
+    filter(type == "word") %>%
+    group_by(id,lexical_category) %>%
+    summarise(cat = sum(value == "produces", na.rm=TRUE))
+  
+  d.vocab.comp <- left_join(d.vocab, d.cat) %>%
+    mutate(prop = cat / vocab.sum) %>%
+    select(-cat) 
+     #spread(lexical_category, prop)
+  
+  d.vocab.comp$language = lang
+  
+  return(d.vocab.comp)
+}
+
+lang.vocab.composition <- function(lang.items) {  
+  
+  lang.words <- lang.items %>%
+    filter(form == "WS",type=="word")
+  
+  lang.num.total <- lang.words %>%
+    group_by(language) %>%
+    summarise(n = n())
+    
+  lang.vocab.comp <-  lang.words %>%
+    group_by(language,lexical_category) %>%
+    summarise(num.per.cat = n())
+  
+  lang.vocab.comp <- left_join(lang.vocab.comp,
+                               lang.num.total) %>%
+        mutate(prop.per.cat = num.per.cat/n)
+
+  return(lang.vocab.comp)
+
+}
+
+lang.vocab.comp <- lang.vocab.composition(items) %>%
+  filter(lexical_category != "other")
+
+vocab.comp.english <- vocab.composition(d.english,"English")
+vocab.comp.spanish <- vocab.composition(d.spanish,"Spanish")
+vocab.comp.norwegian <- vocab.composition(d.norwegian,"Norwegian")
+vocab.comp.danish <- vocab.composition(d.danish,"Danish")
+
+summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
+                                vocab.comp.norwegian,vocab.comp.danish) %>%
+  filter(age > 15 & age < 31) %>%
+  mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)),
+         language = factor(language,
+                           levels=c("English", "Spanish", 
+                                    "Norwegian", "Danish")))
+
+quartz()
+ggplot(filter(summary.vocab.comp,lexical_category != "other"),
+       aes(x=vocab.mean, y=prop, colour=lexical_category, 
+           shape = lexical_category, fill = lexical_category,
+           label=lexical_category)) +
+  geom_point(size = 1, alpha = 0.25) +
+  facet_wrap(~ language) +
+  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
+             linetype="dashed", color="grey") +
+  geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
+  scale_y_continuous(name = "Percentage of total vocabulary") +
+  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1",
+                     breaks=c("nouns", "predicates", "function words"),
+                        name="Lexical Class") +
+  scale_fill_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="none")
+  
+  
+  
+  geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'nouns']), linetype="dashed", color="grey") +
+ # geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'predicates']), linetype="dashed", color="grey") +
+#  geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'function words']), linetype="dashed", color="grey") +
+  
+  #scale_x_continuous(name = paste(vocab.type, "Vocabulary Size (words)", sep=" ")) +
+ 
+```
+
 
 Aggregate together summaries for all languages
 ```{r, message=FALSE}
@@ -182,50 +269,6 @@ summary.data <- rbind_list(summary.english,summary.spanish,
                            levels=c("English", "Spanish", "Norwegian", "Danish")))
 
 ```
-
-Moment of truth!
-```{r,fig.width=11,fig.height=5}
-# quartz()
-# qplot(vocab, complexity, col=age.group,
-#       facets=~language,
-#       data=d) + 
-#   geom_smooth(method="lm", formula=y ~ I(x^2)-1)
-```
-
-```{r}
-# d.all <- rbind_list(d.english,d.spanish,d.norwegian,d.danish)
-# d.all <- left_join(d.all, child.data)
-# d.all$age.grp <- cut(d.all$age, breaks=c(0,16,20,24,28,32,36))
-```
-
-Syntax plot!
-
-```{r,fig.width=10,fig.height=7}
-quartz()
-qplot(vocab, complexity, col=age.group,
-      facets=~language,
-      data=summary.data) + 
-  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
-```
-
-Morphology plot!
-
-```{r,fig.width=10,fig.height=7}
-qplot(vocab, wordform, col=age.grp,
-      facets=~language,
-      data=d.all) + 
-  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
-```
-
-Vocabulary composition plot!
-
-```{r,fig.width=10,fig.height=7}
-ggplot(d.all, aes(x=vocab, y=nouns)) +
-  facet_grid(. ~ language) +
-  geom_point()
-#  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
-```
-
 (Old stuff that needs to be updated)
 ```{r}
 #gather for plotting
@@ -372,24 +415,6 @@ Compute vocab x age interaction terms for each styntactic item
 #  scale_color_brewer(palette="Set1") + 
 #  theme(legend.position="none")
 ```  
-
-# vocab category analysis for later
-# ```{r}
-#   d.cat <- lang.data %>%
-#     filter(type == "word") %>%
-#     group_by(id,lexical_category) %>%
-#     summarise(cat = sum(value == "produces", na.rm=TRUE))
-#   
-#   d.vocab.comp <- left_join(d.vocab, d.cat) %>%
-#     mutate(prop = cat / vocab) %>%
-#     select(-cat) %>%
-#     spread(lexical_category, prop)
-# ```
-Ad-hoc fix to norwegians.
-# ```{r}
-# norwegian.ws.table[is.na(norwegian.ws.table)] = ""
-# danish.ws.table[is.na(danish.ws.table)] = ""
-# ```
 
 Leftover analyses
 ```{r}
