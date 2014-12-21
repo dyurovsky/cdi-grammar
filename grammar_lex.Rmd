@@ -1,7 +1,11 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
+<<<<<<< HEAD
 date: "December 20, 2014"
+=======
+date: "December 21, 2014"
+>>>>>>> 8bd0178dfad6846b8f47ba8feaed37f8a5b355f6
 output: html_document
 ---
 
@@ -32,6 +36,7 @@ child.table <- tbl(wordbank,"common_child")
 wordmapping.table <- tbl(wordbank,"common_wordmapping")
 instruments.table <- tbl(wordbank,"common_instrumentsmap")
 english.ws.table <- tbl(wordbank,"instruments_english_ws")
+spanish.ws.table <- tbl(wordbank,"instruments_spanish_ws")
 norwegian.ws.table <- tbl(wordbank,"instruments_norwegian_ws")
 danish.ws.table <- tbl(wordbank,"instruments_danish_ws")
 ```
@@ -78,7 +83,7 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
   
   instrument.data <- as.data.frame(lang.table) %>%
     rename(id = basetable_ptr_id) %>% # Rename the id
-    gather(item, value,-id) %>% # Arrange in longform
+    gather(item, value, -id) %>% # Arrange in longform
     mutate(item = str_replace(item, "item_", "")) # Strip off item_ 
   
   d <- left_join(instrument.data, instrument.items)
@@ -87,6 +92,16 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
     filter(type == "word") %>%
     group_by(id) %>%
     summarise(vocab = sum(value == "produces", na.rm=TRUE))
+  d.cat <- d %>%
+    filter(type == "word") %>%
+    group_by(id,lexical_category) %>%
+    summarise(cat = sum(value == "produces", 
+                          na.rm=TRUE))
+  
+  d.vocab.comp <- left_join(d.vocab, d.cat) %>%
+    mutate(prop = cat / vocab) %>%
+    select(-cat) %>%
+    spread(lexical_category, prop)
   
   d.syntax <- d %>%
     filter(type == "complexity") %>%
@@ -98,18 +113,18 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
     group_by(id) %>%
     summarise(wordform = mean(value == "produces", na.rm=TRUE))
   
-  d.ending <- d %>%
-    filter(type %in% c("ending")) %>%
-    group_by(id) %>%
-    summarise(ending_sometimes = mean(value == "sometimes" | 
-                                        value == "often", 
-                                      na.rm=TRUE), 
-              ending_often = mean(value == "often", 
-                                  na.rm=TRUE))
+#   d.ending <- d %>%
+#     filter(type %in% c("ending")) %>%
+#     group_by(id) %>%
+#     summarise(ending_sometimes = mean(value == "sometimes" | 
+#                                       value == "often", 
+#                                       na.rm=TRUE), 
+#               ending_often = mean(value == "often", 
+#                                   na.rm=TRUE))
   
-  d.composite <- left_join(d.vocab, d.syntax)
+  d.composite <- left_join(d.vocab.comp, d.syntax)
   d.composite <- left_join(d.composite, d.wordform)
-  d.composite <- left_join(d.composite, d.ending)
+#  d.composite <- left_join(d.composite, d.ending)
   
   d.composite$language <- lang 
   
@@ -122,6 +137,9 @@ Run that on stuff.
 d.english <- aggregate.wordbank(lang.table=english.ws.table, 
                                 lang.items=items, 
                                 lang="English")
+d.spanish <- aggregate.wordbank(lang.table=spanish.ws.table, 
+                                lang.items=items, 
+                                lang="Spanish")
 d.norwegian <- aggregate.wordbank(lang.table=norwegian.ws.table, 
                                   lang.items=items, 
                                   lang="Norwegian")
@@ -147,6 +165,40 @@ Moment of truth!
 #   geom_smooth(method="lm", formula=y ~ I(x^2)-1)
 ```
 
+```{r}
+# d.all <- rbind_list(d.english,d.spanish,d.norwegian,d.danish)
+# d.all <- left_join(d.all, child.data)
+# d.all$age.grp <- cut(d.all$age, breaks=c(0,16,20,24,28,32,36))
+```
+
+Syntax plot!
+
+```{r,fig.width=10,fig.height=7}
+qplot(vocab, complexity, col=age.grp,
+      facets=~language,
+      data=d.all) + 
+  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
+
+Morphology plot!
+
+```{r,fig.width=10,fig.height=7}
+qplot(vocab, wordform, col=age.grp,
+      facets=~language,
+      data=d.all) + 
+  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
+
+Vocabulary composition plot!
+
+```{r,fig.width=10,fig.height=7}
+ggplot(d.all, aes(x=vocab, y=nouns)) +
+  facet_grid(. ~ language) +
+  geom_point()
+#  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
+
+(Old stuff that needs to be updated)
 ```{r}
 
 #gather for plotting
