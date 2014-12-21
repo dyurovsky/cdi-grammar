@@ -1,11 +1,7 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
-<<<<<<< HEAD
-date: "December 20, 2014"
-=======
 date: "December 21, 2014"
->>>>>>> 8bd0178dfad6846b8f47ba8feaed37f8a5b355f6
 output: html_document
 ---
 
@@ -31,6 +27,7 @@ wordbank <- src_mysql(dbname='wordbank',host="54.149.39.46",
 #                      user="wordbank",password="wordbank")
 
 ## NOW LOAD TABLES ##
+source.table <- tbl(wordbank,"common_source")
 admin.table <- tbl(wordbank,"common_administration")
 child.table <- tbl(wordbank,"common_child")
 wordmapping.table <- tbl(wordbank,"common_wordmapping")
@@ -39,12 +36,6 @@ english.ws.table <- tbl(wordbank,"instruments_english_ws")
 spanish.ws.table <- tbl(wordbank,"instruments_spanish_ws")
 norwegian.ws.table <- tbl(wordbank,"instruments_norwegian_ws")
 danish.ws.table <- tbl(wordbank,"instruments_danish_ws")
-```
-
-Ad-hoc fix to norwegians.
-```{r}
-norwegian.ws.table[is.na(norwegian.ws.table)] = ""
-danish.ws.table[is.na(danish.ws.table)] = ""
 ```
 
 Get kid data and put together. 
@@ -73,13 +64,14 @@ instruments <- as.data.frame(instruments.table) %>%
 items <- left_join(mapping, instruments)
 ```
 
-Pull data out of the wordbank tables, in a functional way. 
+Gets all of the data in wordbank for a given language (kid x item)
 ```{r,message=FALSE}
-aggregate.wordbank <- function(lang.table, lang.items, lang) {
+get.language.data <- function(lang.table, lang.items, lang, child.data) {
   
-  instrument.items <- lang.items %>% filter(language == lang, 
-                                               form == 'WS') %>%
-    select(item, type, category, lexical_category)
+  instrument.items <- lang.items %>% 
+    filter(language == lang, form == 'WS') %>%
+    select(item, type, category, lexical_category) %>%
+    mutate(item = str_replace(item, "\\.", "_")) # Fix _/. inconsistencies
   
   instrument.data <- as.data.frame(lang.table) %>%
     rename(id = basetable_ptr_id) %>% # Rename the id
@@ -87,30 +79,60 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
     mutate(item = str_replace(item, "item_", "")) # Strip off item_ 
   
   d <- left_join(instrument.data, instrument.items)
+  d <- left_join(d, child.data)
+}
+```
+
+Get kid x item data for all languages
+```{r, message=FALSE}
+d.english <- get.language.data(lang.table=english.ws.table, 
+                               lang.items=items, 
+                               lang="English",
+                               child.data)
+
+d.spanish <- get.language.data(lang.table=spanish.ws.table, 
+                               lang.items=items, 
+                               lang="Spanish",
+                               child.data)
+
+d.norwegian <- get.language.data(lang.table=norwegian.ws.table, 
+                               lang.items=items, 
+                               lang="Norwegian",
+                               child.data)
+
+#Norwegian data is loaded in funny---NAs in wordform are actually 0s
+d.norwegian[d.norwegian$type %in% c("word_form","word")
+  & is.na(d.norwegian$value),]$value = ""
+
+d.danish <- get.language.data(lang.table=danish.ws.table, 
+                               lang.items=items, 
+                               lang="Danish",
+                               child.data)
+#Danish data is loaded in funny---NAs in wordform are actually 0s
+d.danish[d.danish$type %in% c("word_form","word")
+  & is.na(d.danish$value),]$value = ""
+
+```
+
+Get kid x c(vocab size, composition, syntax, morphology)
+```{r}
+summarise.language.data <- function(lang.data,lang) {
   
-  d.vocab <- d %>%
+  d.vocab <- lang.data %>%
     filter(type == "word") %>%
-    group_by(id) %>%
-    summarise(vocab = sum(value == "produces", na.rm=TRUE))
-  d.cat <- d %>%
-    filter(type == "word") %>%
-    group_by(id,lexical_category) %>%
-    summarise(cat = sum(value == "produces", 
-                          na.rm=TRUE))
-  
-  d.vocab.comp <- left_join(d.vocab, d.cat) %>%
-    mutate(prop = cat / vocab) %>%
-    select(-cat) %>%
-    spread(lexical_category, prop)
-  
-  d.syntax <- d %>%
+    group_by(age,id) %>%
+    summarise(vocab.sum = sum(value == "produces", na.rm=TRUE),
+              vocab.mean = mean(value == "produces", na.rm=TRUE))
+
+  d.complexity <- lang.data %>%
     filter(type == "complexity") %>%
-    group_by(id) %>%
-    summarise(complexity = mean(value == "complex", na.rm=TRUE))
-  
-  d.wordform <- d %>%
-    filter(type %in% c("word_form")) %>%
-    group_by(id) %>%
+    group_by(age,id) %>%
+    summarise(num.complexity.na = sum(is.na(value)),
+              complexity = mean(value == "complex", na.rm=TRUE))
+
+  d.wordform <- lang.data %>%
+    filter(type == "word_form") %>%
+    group_by(age,id) %>%
     summarise(wordform = mean(value == "produces", na.rm=TRUE))
   
 #   d.ending <- d %>%
@@ -121,39 +143,44 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
 #                                       na.rm=TRUE), 
 #               ending_often = mean(value == "often", 
 #                                   na.rm=TRUE))
-  
-  d.composite <- left_join(d.vocab.comp, d.syntax)
-  d.composite <- left_join(d.composite, d.wordform)
 #  d.composite <- left_join(d.composite, d.ending)
   
+  d.composite <- left_join(d.vocab, d.complexity)
+  d.composite <- left_join(d.composite, d.wordform) %>%
+  filter(num.complexity.na == 0) %>%
+  select(-num.complexity.na)
+
   d.composite$language <- lang 
   
   return(d.composite)
-  }
+}
 ```
 
-Run that on stuff.
-```{r, message=FALSE}
-d.english <- aggregate.wordbank(lang.table=english.ws.table, 
-                                lang.items=items, 
-                                lang="English")
-d.spanish <- aggregate.wordbank(lang.table=spanish.ws.table, 
-                                lang.items=items, 
-                                lang="Spanish")
-d.norwegian <- aggregate.wordbank(lang.table=norwegian.ws.table, 
-                                  lang.items=items, 
-                                  lang="Norwegian")
-d.danish <- aggregate.wordbank(lang.table=danish.ws.table, 
-                               lang.items=items, 
-                               lang="Danish")
-```
+Weird source stuff
+# ```{r}
+# source.vocabs <-d.english %>%
+#   group_by(source.id) %>%
+#   summarise(vocab = mean(value=="produces")) %>%
+#   rename(id = source.id)
+# 
+# 
+# View(left_join(source.vocabs,as.data.frame(source.table)))
+# ```
 
-Now stick this all in a big data frame. 
+Aggregate together summaries for all languages
 ```{r, message=FALSE}
-d <- rbind_list(d.english,d.norwegian,d.danish)
-d <- left_join(d, child.data) %>%
+summary.english <- summarise.language.data(d.english,"English")
+summary.spanish <- summarise.language.data(d.spanish,"Spanish")
+summary.norwegian <- summarise.language.data(d.norwegian,"Norwegian")
+summary.danish <- summarise.language.data(d.danish,"Danish")
+
+summary.data <- rbind_list(summary.english,summary.spanish,
+                           summary.norwegian,summary.danish) %>%
   filter(age > 15 & age < 31) %>%
-  mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)))
+  mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)),
+         language = factor(language,
+                           levels=c("English", "Spanish", "Norwegian", "Danish")))
+
 ```
 
 Moment of truth!
@@ -174,9 +201,10 @@ Moment of truth!
 Syntax plot!
 
 ```{r,fig.width=10,fig.height=7}
-qplot(vocab, complexity, col=age.grp,
+quartz()
+qplot(vocab, complexity, col=age.group,
       facets=~language,
-      data=d.all) + 
+      data=summary.data) + 
   geom_smooth(method="lm", formula=y ~ I(x^2)-1)
 ```
 
@@ -200,12 +228,11 @@ ggplot(d.all, aes(x=vocab, y=nouns)) +
 
 (Old stuff that needs to be updated)
 ```{r}
-
 #gather for plotting
-ms <- d %>% gather(measure, score, syntax:morpho) %>%
- mutate(measure = factor(measure, levels = c("wordform",""),
-                         labels = c("Morphology", "Syntax")),
-        s.vocab = scale(vocab),
+ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
+ mutate(measure = factor(measure, levels = c("wordform","complexity"),
+                         labels = c("Word Form", "Complexity")),
+        s.vocab = scale(vocab.mean),
         s.age = scale(age))
 
 # by-item morphology data for further analysis
@@ -219,30 +246,34 @@ bykid.syntax.vocab <- left_join(bykid.syntax.vocab,child.data) %>%
 
 Age and Vocab predict Morphology and Syntax Scores
 ```{r,fig.width=11,fig.height=5}
-#ggplot(ms,aes(x = vocab, y = score, colour = age.binned, fill = age.binned,
-#              label = age.binned)) + 
-#  geom_jitter()+
-#  geom_smooth(method="lm", formula = y ~ I(x^2)) + 
-#  facet_wrap(~measure) + 
-#  scale_x_continuous(limits = c(0,681), breaks = seq(0,680,100),name = "Vocabulary (WS)") + 
-#  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),"Score (Mean Items)") + 
-#  theme_bw(base_size = 14) +
-#  scale_color_brewer(palette="Set1") +
-#  scale_fill_brewer(palette="Set1") 
+quartz(width=8,height=7.5)
+ggplot(ms,aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
+             label = age.group)) + 
+ geom_jitter(size=.8)+
+ geom_smooth(method="lm", formula = y ~ I(x^2)) + 
+ facet_grid(language~measure) + 
+ scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
+                    name = "Vocabulary Proportion (WS)") + 
+ scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),"Score (Mean Items)") + 
+ theme_bw(base_size = 14) +
+ scale_color_brewer(palette="Set1") +
+ scale_fill_brewer(palette="Set1") 
 ```
 
 Using Morphology to Predict Syntax
 ```{r,fig.width=7,fig.height=5}
-#ggplot(d,aes(x = morpho, y = syntax, fill=age.binned,colour=age.binned,
-#             label=age.binned))+ 
-#  geom_jitter()+
-#  geom_smooth(method="lm", formula = y ~ x) + 
-#  scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),name = "Morphology Score") + 
-#  scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
-#  scale_color_brewer(palette="Set1") +
-#  scale_fill_brewer(palette="Set1") +
-#  theme_bw(base_size = 14)
-#```
+quartz()
+ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.group,
+            label=age.group))+ 
+  facet_wrap( ~ language)+
+ geom_jitter()+
+ geom_smooth(method="lm", formula = y ~ x) + 
+ scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),name = "Morphology Score") + 
+ scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
+ scale_color_brewer(palette="Set1") +
+ scale_fill_brewer(palette="Set1") +
+ theme_bw(base_size = 14)
+```
 
 #Fit regressions to data
 #```{r,fig.width=12,fig.height=7.5}
@@ -341,6 +372,24 @@ Compute vocab x age interaction terms for each styntactic item
 #  scale_color_brewer(palette="Set1") + 
 #  theme(legend.position="none")
 ```  
+
+# vocab category analysis for later
+# ```{r}
+#   d.cat <- lang.data %>%
+#     filter(type == "word") %>%
+#     group_by(id,lexical_category) %>%
+#     summarise(cat = sum(value == "produces", na.rm=TRUE))
+#   
+#   d.vocab.comp <- left_join(d.vocab, d.cat) %>%
+#     mutate(prop = cat / vocab) %>%
+#     select(-cat) %>%
+#     spread(lexical_category, prop)
+# ```
+Ad-hoc fix to norwegians.
+# ```{r}
+# norwegian.ws.table[is.na(norwegian.ws.table)] = ""
+# danish.ws.table[is.na(danish.ws.table)] = ""
+# ```
 
 Leftover analyses
 ```{r}
