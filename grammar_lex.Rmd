@@ -82,7 +82,7 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
   
   instrument.data <- as.data.frame(lang.table) %>%
     rename(id = basetable_ptr_id) %>% # Rename the id
-    gather(item, value,-id) %>% # Arrange in longform
+    gather(item, value, -id) %>% # Arrange in longform
     mutate(item = str_replace(item, "item_", "")) # Strip off item_ 
   
   d <- left_join(instrument.data, instrument.items)
@@ -92,6 +92,17 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
     group_by(id) %>%
     summarise(vocab = sum(value == "produces", 
                           na.rm=TRUE))
+
+  d.cat <- d %>%
+    filter(type == "word") %>%
+    group_by(id,lexical_category) %>%
+    summarise(cat = sum(value == "produces", 
+                          na.rm=TRUE))
+  
+  d.vocab.comp <- left_join(d.vocab, d.cat) %>%
+    mutate(prop = cat / vocab) %>%
+    select(-cat) %>%
+#    spread(lexical_category, prop)
   
   d.syntax <- d %>%
     filter(type == "complexity") %>%
@@ -114,7 +125,7 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
 #               ending_often = mean(value == "often", 
 #                                   na.rm=TRUE))
   
-  d.composite <- left_join(d.vocab, d.syntax)
+  d.composite <- left_join(d.vocab.comp, d.syntax)
   d.composite <- left_join(d.composite, d.wordform)
 #  d.composite <- left_join(d.composite, d.ending)
   
@@ -144,20 +155,37 @@ d.danish <- aggregate.wordbank(lang.table=danish.ws.table,
 Now stick this all in a big data frame. 
 
 ```{r}
-d <- rbind_list(d.english,d.spanish,d.norwegian,d.danish)
-d <- left_join(d, child.data)
-d$age.grp <- cut(d$age, breaks=c(0,16,20,24,28,32,36))
+d.all <- rbind_list(d.english,d.spanish,d.norwegian,d.danish)
+d.all <- left_join(d.all, child.data)
+d.all$age.grp <- cut(d.all$age, breaks=c(0,16,20,24,28,32,36))
 ```
 
-Moment of truth!
+Syntax plot!
 
 ```{r,fig.width=10,fig.height=7}
 qplot(vocab, complexity, col=age.grp,
       facets=~language,
-      data=d) + 
+      data=d.all) + 
   geom_smooth(method="lm", formula=y ~ I(x^2)-1)
 ```
 
+Morphology plot!
+
+```{r,fig.width=10,fig.height=7}
+qplot(vocab, wordform, col=age.grp,
+      facets=~language,
+      data=d.all) + 
+  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
+
+Vocabulary composition plot!
+
+```{r,fig.width=10,fig.height=7}
+ggplot(d.all, aes(x=vocab, y=nouns)) +
+  facet_grid(. ~ language) +
+  geom_point()
+#  geom_smooth(method="lm", formula=y ~ I(x^2)-1)
+```
 
 (Old stuff that needs to be updated)
 
