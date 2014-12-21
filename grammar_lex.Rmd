@@ -1,7 +1,7 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
-date: "December 19, 2014"
+date: "December 21, 2014"
 output: html_document
 ---
 
@@ -32,6 +32,7 @@ child.table <- tbl(wordbank,"common_child")
 wordmapping.table <- tbl(wordbank,"common_wordmapping")
 instruments.table <- tbl(wordbank,"common_instrumentsmap")
 english.ws.table <- tbl(wordbank,"instruments_english_ws")
+spanish.ws.table <- tbl(wordbank,"instruments_spanish_ws")
 norwegian.ws.table <- tbl(wordbank,"instruments_norwegian_ws")
 danish.ws.table <- tbl(wordbank,"instruments_danish_ws")
 ```
@@ -104,18 +105,18 @@ aggregate.wordbank <- function(lang.table, lang.items, lang) {
     summarise(wordform = mean(value == "produces", 
                               na.rm=TRUE))
   
-  d.ending <- d %>%
-    filter(type %in% c("ending")) %>%
-    group_by(id) %>%
-    summarise(ending_sometimes = mean(value == "sometimes" | 
-                                        value == "often", 
-                                      na.rm=TRUE), 
-              ending_often = mean(value == "often", 
-                                  na.rm=TRUE))
+#   d.ending <- d %>%
+#     filter(type %in% c("ending")) %>%
+#     group_by(id) %>%
+#     summarise(ending_sometimes = mean(value == "sometimes" | 
+#                                       value == "often", 
+#                                       na.rm=TRUE), 
+#               ending_often = mean(value == "often", 
+#                                   na.rm=TRUE))
   
   d.composite <- left_join(d.vocab, d.syntax)
   d.composite <- left_join(d.composite, d.wordform)
-  d.composite <- left_join(d.composite, d.ending)
+#  d.composite <- left_join(d.composite, d.ending)
   
   d.composite$language <- lang 
   
@@ -129,6 +130,9 @@ Run that on stuff.
 d.english <- aggregate.wordbank(lang.table=english.ws.table, 
                                 lang.items=items, 
                                 lang="English")
+d.spanish <- aggregate.wordbank(lang.table=spanish.ws.table, 
+                                lang.items=items, 
+                                lang="Spanish")
 d.norwegian <- aggregate.wordbank(lang.table=norwegian.ws.table, 
                                   lang.items=items, 
                                   lang="Norwegian")
@@ -140,14 +144,14 @@ d.danish <- aggregate.wordbank(lang.table=danish.ws.table,
 Now stick this all in a big data frame. 
 
 ```{r}
-d <- rbind_list(d.english,d.norwegian,d.danish)
+d <- rbind_list(d.english,d.spanish,d.norwegian,d.danish)
 d <- left_join(d, child.data)
 d$age.grp <- cut(d$age, breaks=c(0,16,20,24,28,32,36))
 ```
 
 Moment of truth!
 
-```{r,fig.width=11,fig.height=5}
+```{r,fig.width=10,fig.height=7}
 qplot(vocab, complexity, col=age.grp,
       facets=~language,
       data=d) + 
