@@ -116,7 +116,6 @@ d.danish[d.danish$type %in% c("word_form","word")
 
 Get kid x c(vocab size, composition, syntax, morphology)
 ```{r}
-
 language.vocab.sizes <- function(lang.data) {
    d.vocab <- lang.data %>%
     filter(type == "word") %>%
@@ -164,7 +163,9 @@ summarise.language.data <- function(lang.data,lang) {
 ```
 
 Vocabulary composition for each language
-```{r}
+```{r, message=FALSE,fig.width=9,fig.height=6}
+
+# compute vocabulary composition for each speaker of one language
 vocab.composition <- function(lang.data,lang) {  
   
   d.vocab <- language.vocab.sizes(lang.data)
@@ -177,13 +178,12 @@ vocab.composition <- function(lang.data,lang) {
   d.vocab.comp <- left_join(d.vocab, d.cat) %>%
     mutate(prop = cat / vocab.sum) %>%
     select(-cat) 
-     #spread(lexical_category, prop)
-  
   d.vocab.comp$language = lang
   
   return(d.vocab.comp)
 }
 
+# compute cdi composition for each language
 lang.vocab.composition <- function(lang.items) {  
   
   lang.words <- lang.items %>%
@@ -197,60 +197,56 @@ lang.vocab.composition <- function(lang.items) {
     group_by(language,lexical_category) %>%
     summarise(num.per.cat = n())
   
-  lang.vocab.comp <- left_join(lang.vocab.comp,
-                               lang.num.total) %>%
+  lang.vocab.comp <- left_join(lang.vocab.comp, lang.num.total) %>%
         mutate(prop.per.cat = num.per.cat/n)
 
   return(lang.vocab.comp)
 
 }
 
+# get compositions for plotting
 lang.vocab.comp <- lang.vocab.composition(items) %>%
   filter(lexical_category != "other")
 
+# get data for kids in each language
 vocab.comp.english <- vocab.composition(d.english,"English")
 vocab.comp.spanish <- vocab.composition(d.spanish,"Spanish")
 vocab.comp.norwegian <- vocab.composition(d.norwegian,"Norwegian")
 vocab.comp.danish <- vocab.composition(d.danish,"Danish")
 
+# aggregate data for all languages together
 summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
                                 vocab.comp.norwegian,vocab.comp.danish) %>%
   filter(age > 15 & age < 31) %>%
   mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)),
          language = factor(language,
                            levels=c("English", "Spanish", 
-                                    "Norwegian", "Danish")))
+                                    "Norwegian", "Danish")),
+         lexical_category = factor(lexical_category, 
+                                   levels = c("nouns", "predicates", 
+                                              "function_words", "other"),
+                                   labels = c("Nouns", "Predicates", 
+                                              "Function Words", "Other")))
 
-quartz()
-ggplot(filter(summary.vocab.comp,lexical_category != "other"),
+# Plot composition by language
+ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
        aes(x=vocab.mean, y=prop, colour=lexical_category, 
            shape = lexical_category, fill = lexical_category,
            label=lexical_category)) +
   geom_point(size = 1, alpha = 0.25) +
   facet_wrap(~ language) +
   geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
-             linetype="dashed", color="grey") +
+             linetype="dashed", color="grey") + #baselines for each language
   geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
-  scale_y_continuous(name = "Percentage of total vocabulary") +
+  scale_y_continuous(name = "Proportino of total vocabulary") +
   geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
   theme_bw(base_size=14) + 
-  scale_color_brewer(palette = "Set1",
-                     breaks=c("nouns", "predicates", "function words"),
-                        name="Lexical Class") +
+  scale_color_brewer(palette = "Set1") +
   scale_fill_brewer(palette = "Set1")+
   theme(axis.text.x = element_text(angle=-40, hjust = 0),
         axis.title.y = element_text(vjust=0.35),
         axis.title.x = element_text(vjust=-0.5),
         legend.position="none")
-  
-  
-  
-  geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'nouns']), linetype="dashed", color="grey") +
- # geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'predicates']), linetype="dashed", color="grey") +
-#  geom_hline(aes(yintercept=form.cat.sizes$prop.cat[form.cat.sizes$lex.cat == 'function words']), linetype="dashed", color="grey") +
-  
-  #scale_x_continuous(name = paste(vocab.type, "Vocabulary Size (words)", sep=" ")) +
- 
 ```
 
 
@@ -279,12 +275,12 @@ ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
         s.age = scale(age))
 
 # by-item morphology data for further analysis
-bykid.syntax.vocab <- left_join(ws.words,ws.syntax)
-bykid.syntax.vocab <- left_join(bykid.syntax.vocab,child.data) %>%
- filter(vocab > 0, age >15, age < 31) %>%
- select(-child.id,-source.id) %>% #drop redundant columns 
- mutate(age.binned = cut(age, breaks = c(15, 20, 25, 30))) %>%
- spread(word,produces)
+# bykid.syntax.vocab <- left_join(ws.words,ws.syntax)
+# bykid.syntax.vocab <- left_join(bykid.syntax.vocab,child.data) %>%
+#  filter(vocab > 0, age >15, age < 31) %>%
+#  select(-child.id,-source.id) %>% #drop redundant columns 
+#  mutate(age.binned = cut(age, breaks = c(15, 20, 25, 30))) %>%
+#  spread(word,produces)
 ```
 
 Age and Vocab predict Morphology and Syntax Scores
