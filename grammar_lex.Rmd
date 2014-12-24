@@ -226,7 +226,7 @@ ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.
                         label=age.group)) + 
   facet_wrap( ~ language) +
   geom_jitter(size=1)+
-  geom_smooth(method="lm", formula = y ~ x - 1) + 
+  geom_smooth(method="lm", formula = y ~ exp(-x) - 1) + 
   scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),name = "Morphology Score") + 
   scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
   scale_color_brewer(palette="Set1") +
@@ -296,8 +296,8 @@ vocab.comp.danish <- vocab.composition(d.danish,"Danish")
 # aggregate data for all languages together
 summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
                                  vocab.comp.norwegian,vocab.comp.danish) %>%
-  filter(age > 15 & age < 31) %>%
-  mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)),
+  filter(age > 12 & age < 32) %>%
+  mutate(age.group = cut(age, breaks = c(12, 16, 20, 24, 28, 32)),
          language = factor(language,
                            levels=c("English", "Spanish", 
                                     "Norwegian", "Danish")),
@@ -310,6 +310,7 @@ summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
 
 Plot vocabulary composition by language.
 ```{r, fig.width=10, fig.height=8}
+quartz()
 ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
        aes(x=vocab.mean, y=prop, colour=lexical_category, 
            shape = lexical_category, fill = lexical_category,
@@ -322,6 +323,60 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
   scale_y_continuous(name = "Proportion of total vocabulary") +
   scale_x_continuous(name = "Vocabulary Size") +
   geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="none")
+```
+
+Plot vocabulary composition by language and age group
+
+```{r, fig.width=10, fig.height=8}
+quartz()
+ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
+       aes(x=vocab.mean, y=prop, colour=lexical_category, 
+           shape = lexical_category, fill = lexical_category,
+           label=lexical_category)) +
+  geom_point(size = 1, alpha = 0.25) +
+  facet_grid(language ~ age.group) +
+  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
+             linetype="dashed", color="grey") + #baselines for each language
+  geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
+  scale_y_continuous(name = "Proportion of total vocabulary") +
+  scale_x_continuous(name = "Vocabulary Size") +
+  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="none")
+```
+
+Plot vocabulary composition, now by lexical category
+
+```{r, fig.width=10, fig.height=8}
+lang.vocab.comp$lexical_category <- factor(lang.vocab.comp$lexical_category, 
+                                           levels=c("function_words","nouns",
+                                                    "predicates","other"),
+                                           labels=c("Function Words","Nouns",
+                                                    "Predicates","Other"))
+quartz()
+ggplot(summary.vocab.comp,
+       aes(x=vocab.mean, y=prop, colour = age.group, 
+           fill = age.group)) +
+  geom_point(size = 1, alpha = 0.25) +
+  facet_grid(language ~ lexical_category) +
+  geom_hline(data=lang.vocab.comp, 
+             aes(yintercept=prop.per.cat),
+             linetype="dashed", color="grey") + #baselines for each language
+  geom_smooth(aes(group=age.group), method='loess', span=0.5) +
+  scale_y_continuous(name = "Proportion of total vocabulary") +
+  scale_x_continuous(name = "Vocabulary Size") +
   theme_bw(base_size=14) + 
   scale_color_brewer(palette = "Set1") +
   scale_fill_brewer(palette = "Set1")+
