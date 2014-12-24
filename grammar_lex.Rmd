@@ -85,7 +85,7 @@ get.language.data <- function(lang.table, lang.items, lang, child.data) {
   
   d <- left_join(instrument.data, instrument.items)
   d <- left_join(d, child.data)
-  }
+}
 ```
 
 Get kid x item data for all languages.
@@ -137,6 +137,9 @@ language.vocab.sizes <- function(lang.data) {
 ## Syntax and Morphology Analyses
 
 Function for getting kid x {vocab size, syntax score, morphology score} data.
+
+According to Virginia, NAs here are just "my kid doesn't say that," and should be scored as 1s. So now this is computed as the total number of "complex" divided by the length.
+
 ```{r}
 summarise.language.data <- function(lang.data,lang) {
   
@@ -145,13 +148,12 @@ summarise.language.data <- function(lang.data,lang) {
   d.complexity <- lang.data %>%
     filter(type == "complexity") %>%
     group_by(age,id) %>%
-    summarise(num.complexity.na = sum(is.na(value)),
-              complexity = mean(value == "complex", na.rm=TRUE))
+    summarise(complexity = sum(value == "complex", na.rm=TRUE) / length(value))
   
   d.wordform <- lang.data %>%
     filter(type == "word_form") %>%
     group_by(age,id) %>%
-    summarise(wordform = mean(value == "produces", na.rm=TRUE))
+    summarise(wordform = sum(value == "produces", na.rm=TRUE) / length(value))
   
   # Spanish doesn't have ending data, so its skipped, at least for now.
   #   d.ending <- d %>%
@@ -165,10 +167,11 @@ summarise.language.data <- function(lang.data,lang) {
   #  d.composite <- left_join(d.composite, d.ending)
   
   d.composite <- left_join(d.vocab, d.complexity)
-  d.composite <- left_join(d.composite, d.wordform) %>%
-    filter(num.complexity.na == 0) %>%
-    select(-num.complexity.na)
-  
+  d.composite <- left_join(d.composite, d.wordform) 
+#   %>%
+#     filter(num.complexity.na == 0) %>%
+#     select(-num.complexity.na)
+#   
   d.composite$language <- lang 
   
   return(d.composite)
@@ -184,8 +187,8 @@ summary.danish <- summarise.language.data(d.danish,"Danish")
 
 summary.data <- rbind_list(summary.english,summary.spanish,
                            summary.norwegian,summary.danish) %>%
-  filter(age > 15 & age < 31) %>%
-  mutate(age.group = cut(age, breaks = c(15, 20, 25, 30)),
+  filter(age > 12 & age < 32) %>%
+  mutate(age.group = cut(age, breaks = c(12, 16, 20, 24, 28, 32)),
          language = factor(language,
                            levels=c("English", "Spanish", "Norwegian", "Danish")))
 # gather for plotting
@@ -194,15 +197,19 @@ ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
                           labels = c("Word Form", "Complexity")),
          s.vocab = scale(vocab.mean),
          s.age = scale(age))
+
+
+ms %>% select(-s.vocab, -s.age) %>% group_by(language, age.group) %>% summarise(n = n())
 ```
 
 Using Age and Vocab to predict Morphology and Syntax Scores.
 ```{r, fig.width=12, fig.height=8}
-#quartz(width=8,height=7.5)
-ggplot(ms,aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
+quartz(width=8,height=7.5)
+ggplot(ms, aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
               label = age.group)) + 
-  geom_jitter(size=.8)+
-  geom_smooth(method="lm", formula = y ~ I(x^2)) + 
+  geom_point(alpha=.5, size=.8) + 
+#   geom_jitter(size=.8) +
+  geom_smooth(method="lm", formula = y ~ I(x^2) - 1) + 
   facet_grid(language~measure) + 
   scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
                      name = "Vocabulary Size") + 
@@ -214,12 +221,12 @@ ggplot(ms,aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
 
 Using Morphology scores to Predict Syntax scores.
 ```{r, fig.width=8, fig.height=6}
-#quartz()
+quartz(width=8,height=7.5)
 ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.group,
                         label=age.group)) + 
   facet_wrap( ~ language) +
   geom_jitter(size=1)+
-  geom_smooth(method="lm", formula = y ~ x) + 
+  geom_smooth(method="lm", formula = y ~ x - 1) + 
   scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),name = "Morphology Score") + 
   scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
   scale_color_brewer(palette="Set1") +
