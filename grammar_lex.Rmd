@@ -1,7 +1,7 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
-date: "December 21, 2014"
+date: "December 25, 2014"
 output: html_document
 ---
 `r library(knitr)`
@@ -126,10 +126,10 @@ language.vocab.sizes <- function(lang.data) {
     filter(type == "word") %>%
     group_by(age,id) %>%
     summarise(vocab.sum = sum(value == "produces", na.rm=TRUE),
-              vocab.mean = mean(value == "produces", na.rm=TRUE))
+              vocab.mean = vocab.sum/length(value))
   
   return(d.vocab)
-  }
+}
 ```
 
 ***
@@ -147,13 +147,23 @@ summarise.language.data <- function(lang.data,lang) {
   
   d.complexity <- lang.data %>%
     filter(type == "complexity") %>%
-    group_by(age,id) %>%
-    summarise(complexity = sum(value == "complex", na.rm=TRUE) / length(value))
-  
+    group_by(id) %>%
+    summarise(all.na = all(is.na(value)),
+              complexity.sum = sum(value == "complex", 
+                               na.rm=TRUE) / length(value)) %>%
+    mutate(complexity = ifelse(all.na,NA,complexity.sum)) %>%
+    select(-all.na,-complexity.sum) # Deals with ifelse 
+                                    # forcing values to logical
+           
   d.wordform <- lang.data %>%
     filter(type == "word_form") %>%
-    group_by(age,id) %>%
-    summarise(wordform = sum(value == "produces", na.rm=TRUE) / length(value))
+    group_by(id) %>%
+    summarise(all.na = all(is.na(value)),
+              wordform.sum = sum(value == "produces", 
+                               na.rm=TRUE) / length(value)) %>%
+    mutate(wordform = ifelse(all.na,NA,wordform.sum)) %>%
+    select(-all.na,-wordform.sum) # Deals with ifelse 
+                                    # forcing values to logical
   
   # Spanish doesn't have ending data, so its skipped, at least for now.
   #   d.ending <- d %>%
@@ -175,7 +185,7 @@ summarise.language.data <- function(lang.data,lang) {
   d.composite$language <- lang 
   
   return(d.composite)
-  }
+}
 ```
 
 Get kid x {vocab size, syntax score, morphology score} data for all languages and aggregate them.
@@ -187,19 +197,21 @@ summary.danish <- summarise.language.data(d.danish,"Danish")
 
 summary.data <- rbind_list(summary.english,summary.spanish,
                            summary.norwegian,summary.danish) %>%
-  filter(age > 12 & age < 32) %>%
-  mutate(age.group = cut(age, breaks = c(12, 16, 20, 24, 28, 32)),
+  filter(age > 15 & age < 33) %>%
+  mutate(age.group = cut(age, breaks = c(15, 20, 24, 28, 32)),
          language = factor(language,
-                           levels=c("English", "Spanish", "Norwegian", "Danish")))
+                           levels=c("English", "Spanish", 
+                                    "Norwegian", "Danish")))
 # gather for plotting
 ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
   mutate(measure = factor(measure, levels = c("wordform","complexity"),
-                          labels = c("Word Form", "Complexity")),
-         s.vocab = scale(vocab.mean),
-         s.age = scale(age))
+                          labels = c("Word Form", "Complexity")))
 
 
-ms %>% select(-s.vocab, -s.age) %>% group_by(language, age.group) %>% summarise(n = n())
+ms %>% 
+  group_by(language, age.group) %>% 
+  summarise(n = n())
+
 ```
 
 Using Age and Vocab to predict Morphology and Syntax Scores.
@@ -207,13 +219,14 @@ Using Age and Vocab to predict Morphology and Syntax Scores.
 quartz(width=8,height=7.5)
 ggplot(ms, aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
               label = age.group)) + 
-  geom_point(alpha=.5, size=.8) + 
-#   geom_jitter(size=.8) +
+  #geom_point(alpha=.5, size=.8) + 
+  geom_jitter(alpha=.5,size=.8) +
   geom_smooth(method="lm", formula = y ~ I(x^2) - 1) + 
   facet_grid(language~measure) + 
   scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
                      name = "Vocabulary Size") + 
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),"Score (Mean Items)") + 
+  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                     "Score (Mean Items)") + 
   theme_bw(base_size = 14) +
   scale_color_brewer(palette="Set1") +
   scale_fill_brewer(palette="Set1") 
@@ -226,15 +239,14 @@ ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.
                         label=age.group)) + 
   facet_wrap( ~ language) +
   geom_jitter(size=1)+
-  geom_smooth(method="lm", formula = y ~ exp(-x) - 1) + 
-  scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),name = "Morphology Score") + 
+  geom_smooth(method="lm", formula = y ~ exp(x) - 1) + 
+  scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),
+                     name = "Morphology Score") + 
   scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
   scale_color_brewer(palette="Set1") +
   scale_fill_brewer(palette="Set1") +
   theme_bw(base_size = 14)
 ```
-
-***
 
 ## Vocabulary Composition Analysis
 
@@ -255,7 +267,7 @@ vocab.composition <- function(lang.data,lang) {
   d.vocab.comp$language = lang
   
   return(d.vocab.comp)
-  }
+}
 ```
 
 Function for computing CDI form composition for all languages.
@@ -296,8 +308,8 @@ vocab.comp.danish <- vocab.composition(d.danish,"Danish")
 # aggregate data for all languages together
 summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
                                  vocab.comp.norwegian,vocab.comp.danish) %>%
-  filter(age > 12 & age < 32) %>%
-  mutate(age.group = cut(age, breaks = c(12, 16, 20, 24, 28, 32)),
+  filter(age > 15 & age < 33) %>%
+  mutate(age.group = cut(age, breaks = c(15, 20, 24, 28, 32)),
          language = factor(language,
                            levels=c("English", "Spanish", 
                                     "Norwegian", "Danish")),
@@ -310,8 +322,7 @@ summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
 
 Plot vocabulary composition by language.
 ```{r, fig.width=10, fig.height=8}
-quartz()
-ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
+ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour=lexical_category, 
            shape = lexical_category, fill = lexical_category,
            label=lexical_category)) +
@@ -333,14 +344,12 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
 ```
 
 Plot vocabulary composition by language and age group
-
 ```{r, fig.width=10, fig.height=8}
-quartz()
-ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
+ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour=lexical_category, 
            shape = lexical_category, fill = lexical_category,
            label=lexical_category)) +
-  geom_point(size = 1, alpha = 0.25) +
+  geom_jitter(size = 1, alpha = 0.5) +
   facet_grid(language ~ age.group) +
   geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
              linetype="dashed", color="grey") + #baselines for each language
@@ -357,8 +366,7 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Function Words"),
         legend.position="none")
 ```
 
-Plot vocabulary composition, now by lexical category
-
+Plot vocabulary composition, now by lexical category.
 ```{r, fig.width=10, fig.height=8}
 lang.vocab.comp$lexical_category <- factor(lang.vocab.comp$lexical_category, 
                                            levels=c("function_words","nouns",
@@ -366,10 +374,10 @@ lang.vocab.comp$lexical_category <- factor(lang.vocab.comp$lexical_category,
                                            labels=c("Function Words","Nouns",
                                                     "Predicates","Other"))
 quartz()
-ggplot(summary.vocab.comp,
+ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour = age.group, 
            fill = age.group)) +
-  geom_point(size = 1, alpha = 0.25) +
+  geom_jitter(size = 1, alpha = 0.5) +
   facet_grid(language ~ lexical_category) +
   geom_hline(data=lang.vocab.comp, 
              aes(yintercept=prop.per.cat),
@@ -389,18 +397,17 @@ ggplot(summary.vocab.comp,
 ***
 
 (Old stuff that's being kept around for possible future use.)
-```{r}
-#```{r,fig.width=12,fig.height=7.5}
-#Fit regressions to data
-#t.lm1 <- lm(score ~ age + measure, data=ms)
-#t.lm2 <- lm(score ~ I(vocab^2)*measure + age*measure, data=ms)
-#t.lm3 <- lm(score  ~ I(vocab^2)*measure*age.binned, data=ms)
-#t.lm4 <- lm(score  ~ I(vocab^2)*measure*age, data=ms)
-
-#ms$predicted <- predict.lm(t.lm3,ms)
-
+```{r,fig.width=12,fig.height=7.5}
+# Fit regressions to data
+# t.lm1 <- lm(score ~ age + measure, data=filter(ms,language=="English"))
+# t.lm2 <- lm(score ~ I(vocab.sum^2)*measure + age*measure, data=filter(ms,language=="English"))
+# t.lm3 <- lm(score  ~ I(vocab.sum^2)*measure*age.binned, data=filter(ms,language=="English"))
+# t.lm4 <- lm(score  ~ I(vocab.sum^2)*measure*age, data=filter(ms,language=="English"))
+# 
+# ms$predicted <- predict.lm(t.lm3,ms)
+# 
 # Plot by age
-#ggplot(ms,aes(x = vocab, y = score, colour = measure,label=measure))+
+# ggplot(ms,aes(x = vocab, y = score, colour = measure,label=measure))+
 #  facet_wrap(~ age)+
 #  geom_jitter(size=1)+
 #  geom_line(aes(y=predicted),size=.5)+
@@ -408,7 +415,7 @@ ggplot(summary.vocab.comp,
 #  scale_x_continuous(limits = c(0,681), breaks = seq(0,680,100),name = "Vocabulary (WS)") + 
 #  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),"Score (Mean Items)") + 
 #  theme_bw(base_size = 14) 
-#```
+```
 
 #Replot original correlation with fitted model
 #```{r,fig.width=12,fig.height=7.5}
