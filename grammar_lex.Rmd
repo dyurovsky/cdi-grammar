@@ -1,7 +1,7 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
-date: "December 25, 2014"
+date: "December 27, 2014"
 output: html_document
 ---
 `r library(knitr)`
@@ -60,8 +60,7 @@ demos <- as.data.frame(demos)
 child.data <- as.tbl(left_join(admins,demos))
 ```
 
-Set up mappings and instruments. 
-
+Set up mappings and instruments.
 ```{r}
 mapping <- as.data.frame(wordmapping.table)
 instruments <- as.data.frame(instruments.table) %>%
@@ -85,10 +84,10 @@ get.language.data <- function(lang.table, lang.items, lang, child.data) {
   
   d <- left_join(instrument.data, instrument.items)
   d <- left_join(d, child.data)
-}
+  }
 ```
 
-Get kid x item data for all languages.
+Get (kid x item) data for all languages.
 ```{r}
 d.english <- get.language.data(lang.table=english.ws.table, 
                                lang.items=items, 
@@ -129,17 +128,14 @@ language.vocab.sizes <- function(lang.data) {
               vocab.mean = vocab.sum/length(value))
   
   return(d.vocab)
-}
+  }
 ```
 
 ***
 
 ## Syntax and Morphology Analyses
 
-Function for getting kid x {vocab size, syntax score, morphology score} data.
-
-According to Virginia, NAs here are just "my kid doesn't say that," and should be scored as 1s. So now this is computed as the total number of "complex" divided by the length.
-
+Function for getting (kid x {vocab size, syntax score, morphology score}) data.
 ```{r}
 summarise.language.data <- function(lang.data,lang) {
   
@@ -150,20 +146,20 @@ summarise.language.data <- function(lang.data,lang) {
     group_by(id) %>%
     summarise(all.na = all(is.na(value)),
               complexity.sum = sum(value == "complex", 
-                               na.rm=TRUE) / length(value)) %>%
+                                   na.rm=TRUE) / length(value)) %>%
     mutate(complexity = ifelse(all.na,NA,complexity.sum)) %>%
     select(-all.na,-complexity.sum) # Deals with ifelse 
-                                    # forcing values to logical
-           
+  # forcing values to logical
+  
   d.wordform <- lang.data %>%
     filter(type == "word_form") %>%
     group_by(id) %>%
     summarise(all.na = all(is.na(value)),
               wordform.sum = sum(value == "produces", 
-                               na.rm=TRUE) / length(value)) %>%
+                                 na.rm=TRUE) / length(value)) %>%
     mutate(wordform = ifelse(all.na,NA,wordform.sum)) %>%
     select(-all.na,-wordform.sum) # Deals with ifelse 
-                                    # forcing values to logical
+  # forcing values to logical
   
   # Spanish doesn't have ending data, so its skipped, at least for now.
   #   d.ending <- d %>%
@@ -178,17 +174,17 @@ summarise.language.data <- function(lang.data,lang) {
   
   d.composite <- left_join(d.vocab, d.complexity)
   d.composite <- left_join(d.composite, d.wordform) 
-#   %>%
-#     filter(num.complexity.na == 0) %>%
-#     select(-num.complexity.na)
-#   
+  #   %>%
+  #     filter(num.complexity.na == 0) %>%
+  #     select(-num.complexity.na)
+  #   
   d.composite$language <- lang 
   
   return(d.composite)
-}
+  }
 ```
 
-Get kid x {vocab size, syntax score, morphology score} data for all languages and aggregate them.
+Get (kid x {vocab size, syntax score, morphology score}) data for all languages and aggregate them.
 ```{r}
 summary.english <- summarise.language.data(d.english,"English")
 summary.spanish <- summarise.language.data(d.spanish,"Spanish")
@@ -206,19 +202,17 @@ summary.data <- rbind_list(summary.english,summary.spanish,
 ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
   mutate(measure = factor(measure, levels = c("wordform","complexity"),
                           labels = c("Word Form", "Complexity")))
-
-
-ms %>% 
-  group_by(language, age.group) %>% 
-  summarise(n = n())
+#ms %>% 
+#  group_by(language, age.group) %>% 
+#  summarise(n = n())
 
 ```
 
 Using Age and Vocab to predict Morphology and Syntax Scores.
 ```{r, fig.width=12, fig.height=8}
-quartz(width=8,height=7.5)
+#quartz(width=8,height=7.5)
 ggplot(ms, aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
-              label = age.group)) + 
+               label = age.group)) + 
   #geom_point(alpha=.5, size=.8) + 
   geom_jitter(alpha=.5,size=.8) +
   geom_smooth(method="lm", formula = y ~ I(x^2) - 1) + 
@@ -232,9 +226,9 @@ ggplot(ms, aes(x = vocab.mean, y = score, colour = age.group, fill = age.group,
   scale_fill_brewer(palette="Set1") 
 ```
 
-Using Morphology scores to Predict Syntax scores.
+Using Morphology scores to predict Syntax scores.
 ```{r, fig.width=8, fig.height=6}
-quartz(width=8,height=7.5)
+#quartz(width=8,height=7.5)
 ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.group,
                         label=age.group)) + 
   facet_wrap( ~ language) +
@@ -247,6 +241,228 @@ ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.
   scale_fill_brewer(palette="Set1") +
   theme_bw(base_size = 14)
 ```
+
+Examine relationship between vocab size, age, and syntax/morphology scores.
+```{r}
+# fit regressions to data
+english.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
+                 data=filter(ms,language=="English"))
+spanish.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
+                 data=filter(ms,language=="Spanish"))
+norwegian.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
+                   data=filter(ms,language=="Norwegian"))
+danish.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
+                data=filter(ms,language=="Danish"))
+# No significant interaction term for Danish?
+
+predicted.data <- as.data.frame(ms)
+
+predicted.data$predicted <- NA
+
+predicted.data[predicted.data$language=="English",]$predicted <- 
+  predict.lm(english.lm,predicted.data[predicted.data$language=="English",])
+predicted.data[predicted.data$language=="Spanish",]$predicted <- 
+  predict.lm(english.lm,predicted.data[predicted.data$language=="Spanish",])
+predicted.data[predicted.data$language=="Norwegian",]$predicted <- 
+  predict.lm(english.lm,predicted.data[predicted.data$language=="Norwegian",])
+predicted.data[predicted.data$language=="Danish",]$predicted <- 
+  predict.lm(english.lm,predicted.data[predicted.data$language=="Danish",])
+```
+
+Replot original correlation with fitted model.
+```{r,fig.width=12,fig.height=8}
+#quartz(width=8,height=7.5)
+ggplot(predicted.data, aes(x = vocab.mean, y = score, 
+                           colour = age.group, fill = age.group,
+                           label = age.group)) + 
+  geom_jitter(alpha=.5,size=.8) +
+  geom_line(aes(y=predicted),size=1) + 
+  facet_grid(language~measure) + 
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
+                     name = "Vocabulary Size") + 
+  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                     "Score (Mean Items)") + 
+  theme_bw(base_size = 14) +
+  scale_color_brewer(palette="Set1") +
+  scale_fill_brewer(palette="Set1")
+```
+
+Get (kid x item x {vocab size, value}) data for wordform and complexity items.
+```{r}
+grammar.by.item <- function(lang.data, lang) {
+  
+  d.vocab <- language.vocab.sizes(lang.data)
+  
+  d.complexity <- lang.data %>%
+    filter(type == "complexity") %>%
+    mutate(value = value == "complex") %>%
+    select(-lexical_category, -category)
+  
+  d.wordform <- lang.data %>%
+    filter(type == "word_form") %>%
+    mutate(value = value == "produces") %>%
+    select(-lexical_category, -category)
+  
+  d.data <- rbind(d.complexity, d.wordform)
+  d.data <- left_join(d.vocab, d.data) %>%
+    filter(age > 15, age < 33)
+  
+  return(d.data)
+  }
+
+english.grammar.by.item <- grammar.by.item(d.english,"English")
+spanish.grammar.by.item <- grammar.by.item(d.spanish,"Spanish")
+norwegian.grammar.by.item <- grammar.by.item(d.norwegian,"Norwegian")
+danish.grammar.by.item <- grammar.by.item(d.danish,"Danish")
+```
+
+Compute vocab x age interaction terms for each wordform and complexity item.
+```{r,fig.height=5,fig.width=8}
+#compute interaction terms each item
+i.terms.function <- function(data,x) {
+  return(summary(glm(value ~ I((vocab.mean*100)^2)*age+0, 
+                     data=filter(data,definition==x),
+                     family="binomial"))$coefficients[3,3])
+  }
+
+complexity.diff <- function(item) {
+  
+  if(length(grep("/", item)) == 0) {return(item)}
+  else{
+    phrases <- str_split(item," / ")[[1]]
+    first.phrase <- str_split(phrases[1], " ")[[1]]
+    second.phrase <- str_split(phrases[2], " ")[[1]]
+  
+    first.diff <- setdiff(first.phrase,second.phrase)
+    second.diff <- setdiff(second.phrase,first.phrase)
+  
+    if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
+    else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
+    else{first.phrase = paste(first.diff, collapse =" ")
+         second.phrase = paste(second.diff,collapse = " ")
+         return(paste(first.phrase, second.phrase ,sep=" / "))}
+    }
+  }
+
+lang.interaction.terms<- function(grammar.by.item) {
+  
+  complexity.terms <- sapply(unique(filter(grammar.by.item,
+                                           type=="complexity")$definition), 
+                             function(item) i.terms.function(grammar.by.item,
+                                                             item))
+  
+  complexity.terms <- data.frame(type = "complexity",
+                                 definition=names(complexity.terms),
+                                 item=1:length(complexity.terms),
+                                 term = complexity.terms,
+                                 row.names=NULL) %>%
+    mutate(definition= sapply(definition,complexity.diff),
+           item = paste(item,definition,sep=". ")) %>%
+    select(-definition)
+  
+  wordform.terms <- sapply(unique(filter(grammar.by.item,
+                                         type=="word_form")$definition), 
+                           function(item) i.terms.function(grammar.by.item,
+                                                           item))
+  
+  wordform.terms <- data.frame(type = "wordform",
+                               item=names(wordform.terms),
+                               term = wordform.terms,
+                               row.names=NULL)
+  
+  #rename results to be human-readable
+  interaction.terms <-rbind(complexity.terms,wordform.terms) %>%
+    arrange(term) %>%
+    mutate(item = factor(item,levels=item))
+  
+  return(interaction.terms)
+  }
+
+spanish.grammar.by.item$definition <- spanish.grammar.by.item$item
+norwegian.grammar.by.item$definition <- norwegian.grammar.by.item$item
+danish.grammar.by.item$definition <- danish.grammar.by.item$item
+
+english.interaction.terms <- lang.interaction.terms(english.grammar.by.item)
+spanish.interaction.terms <-lang.interaction.terms(spanish.grammar.by.item)
+norwegian.interaction.terms <- lang.interaction.terms(norwegian.grammar.by.item)
+danish.interaction.terms <-  lang.interaction.terms(danish.grammar.by.item)
+```
+
+Plot interaction terms by item for each language.
+```{r}
+interaction.plot <- function(lang.interaction.terms, lang) {
+  plt <- ggplot(lang.interaction.terms,
+                aes(x=item,y=term,fill=type,label=item)) +
+    geom_bar(stat="identity", position="identity", alpha=.5) +
+    geom_text(y=0.15, angle=90, hjust=0, size=3.5) +
+    theme_bw(base_size = 14) +
+    scale_y_continuous(name="Age x Vocabulary Interaction Z-score") +
+    #                     limits=c(-10,20),
+    #                     breaks=seq(-10,20,2.5)) +
+    scale_x_discrete(name="CDI Item",breaks=NULL) +
+    scale_fill_brewer(palette="Set1") +
+    scale_colour_brewer(palette="Set1") +
+    #  theme(legend.position="none") +
+    ggtitle(lang)
+  return(plt)
+  }
+```
+
+```{r,fig.width=10,fig.height=5}
+interaction.plot(english.interaction.terms, "English")
+```
+```{r,fig.width=10,fig.height=5}
+interaction.plot(spanish.interaction.terms, "Spanish")
+```
+```{r,fig.width=10,fig.height=5}
+interaction.plot(norwegian.interaction.terms, "Norwegian")
+```
+```{r,fig.width=10,fig.height=5}
+interaction.plot(danish.interaction.terms, "Danish")
+```  
+
+Compute correlations between items.
+```{r}
+#compute Kendall's tau -- cor.fk is a faster implementation than in stats::cor
+# english.syntax <- english.grammar.by.item %>%
+#   filter(type=="complexity") %>%
+#   ungroup() %>%
+#   spread(item, value) %>%
+#   select(-age, -vocab.sum, -vocab.mean, -type, -definition, -child.id, -source.id, -sex, -mom_ed, -birth_order)
+# 
+# complex.cors <- cor(as.matrix(as.data.frame(eng.syntax.vocab)[,11:ncol(eng.syntax.vocab)]),use="complete") %>%
+#  as.data.frame
+# 
+# complex.cors <- cor(tmp[])
+
+#names(complex.cors) <- str_replace(names(complex.cors),"complx","")
+#row.names(complex.cors) <- str_replace(row.names(complex.cors),"complx","")
+```
+
+Make a dendrogram.
+```{r,fig.width=7,fig.height=4}
+#complex.dendro <- as.dendrogram(hclust(dist(complex.cors)))
+#plot(complex.dendro)
+```
+
+Make a confusion matrix.
+```{r}
+#```{r,fig.width=8,fig.height=5}
+# gather the columns for plotting as a confusion matrix
+#complex.cors %<>%
+#  mutate(prompt = factor(row.names(complex.cors))) %>%
+#  gather(response,correlation,"01":"37")
+
+#ggplot(complex.cors, aes(response, prompt)) + 
+#  geom_tile(aes(fill = correlation)) +
+#  ylim(rev(levels(complex.cors$prompt))) +
+#  scale_fill_gradient(low = "white", high = "black",guide=FALSE) +
+#  labs(x="Response", y = "Prompt") +
+#  theme(legend.position = "none", axis.ticks = element_blank()) +
+#  theme_bw(base_size = 16)
+```
+
+***
 
 ## Vocabulary Composition Analysis
 
@@ -267,7 +483,7 @@ vocab.composition <- function(lang.data,lang) {
   d.vocab.comp$language = lang
   
   return(d.vocab.comp)
-}
+  }
 ```
 
 Function for computing CDI form composition for all languages.
@@ -343,7 +559,7 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
         legend.position="none")
 ```
 
-Plot vocabulary composition by language and age group
+Plot vocabulary composition by language and age group.
 ```{r, fig.width=10, fig.height=8}
 ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour=lexical_category, 
@@ -366,14 +582,14 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
         legend.position="none")
 ```
 
-Plot vocabulary composition, now by lexical category.
+Plot vocabulary composition by lexical category.
 ```{r, fig.width=10, fig.height=8}
 lang.vocab.comp$lexical_category <- factor(lang.vocab.comp$lexical_category, 
                                            levels=c("function_words","nouns",
                                                     "predicates","other"),
                                            labels=c("Function Words","Nouns",
                                                     "Predicates","Other"))
-quartz()
+
 ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour = age.group, 
            fill = age.group)) +
@@ -392,211 +608,4 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
         axis.title.y = element_text(vjust=0.35),
         axis.title.x = element_text(vjust=-0.5),
         legend.position="none")
-```
-
-***
-
-(Old stuff that's being kept around for possible future use.)
-```{r,fig.width=12,fig.height=7.5}
-#Fit regressions to data
-english.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
-                  data=filter(ms,language=="English"))
-danish.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
-                 data=filter(ms,language=="Danish"))
-spanish.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
-                 data=filter(ms,language=="Spanish"))
-norwegian.lm <- lm(score  ~ I((vocab.mean*100)^2)*measure*age.group, 
-                 data=filter(ms,language=="Norwegian"))
-
-# No significant interaction term for Danish?
-
-predicted.data <- as.data.frame(ms)
-
-predicted.data$predicted <- NA
-
-predicted.data[predicted.data$language=="English",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="English",])
-predicted.data[predicted.data$language=="Spanish",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Spanish",])
-predicted.data[predicted.data$language=="Norwegian",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Norwegian",])
-predicted.data[predicted.data$language=="Danish",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Danish",])
-```
-
-Replot original correlation with fitted model
-```{r,fig.width=12,fig.height=7.5}
-quartz(width=8,height=7.5)
-ggplot(predicted.data, aes(x = vocab.mean, y = score, 
-                           colour = age.group, fill = age.group,
-              label = age.group)) + 
-  geom_jitter(alpha=.5,size=.8) +
- geom_line(aes(y=predicted),size=1) + 
-  facet_grid(language~measure) + 
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
-                     name = "Vocabulary Size") + 
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
-                     "Score (Mean Items)") + 
-  theme_bw(base_size = 14) +
-  scale_color_brewer(palette="Set1") +
-  scale_fill_brewer(palette="Set1")
-```
-
-```{r,fig.width=12,fig.height=7.5}
-grammar.by.item <- function(lang.data,lang) {
-  
-  d.vocab <- language.vocab.sizes(lang.data)
-  
-  d.complexity <- lang.data %>%
-    filter(type == "complexity") %>%
-    mutate(value = value == "complex") %>%
-    select(-lexical_category,-category)
-  
-  d.wordform <- lang.data %>%
-    filter(type == "word_form") %>%
-    mutate(value = value == "produces") %>%
-    select(-lexical_category,-category)
-  
-  d.data <- rbind(d.complexity,d.wordform)
-  d.data <- left_join(d.vocab,d.data) %>%
-    filter(age > 15, age < 33)
-
-  return(d.data)
-}
-  
-english.grammar.by.item <- grammar.by.item(d.english,"English")
-spanish.grammar.by.item <- grammar.by.item(d.spanish,"Spanish")
-norwegian.grammar.by.item <- grammar.by.item(d.norwegian,"Norwegian")
-danish.grammar.by.item <- grammar.by.item(d.danish,"Danish")
-
-```
-
-Compute some descriptives on syntactic items
-```{r,fig.width=7,fig.height=4}
-# # compute Kendall's tau -- cor.fk is a faster implementation than in stats::cor
-# complex.cors <- cor(as.matrix(as.data.frame(eng.syntax.vocab)[,11:ncol(eng.syntax.vocab)]),use="complete") %>%
-#  as.data.frame
-# 
-# complex.cors <- cor(tmp[])
-# 
-# #names(complex.cors) <- str_replace(names(complex.cors),"complx","")
-# #row.names(complex.cors) <- str_replace(row.names(complex.cors),"complx","")
-
-
-make a dendrogram of the complex item similarities
-complex.dendro <- as.dendrogram(hclust(dist(complex.cors)))
-
-plot(complex.dendro)
-```
-
-#Make a confusion matrix
-#```{r,fig.width=8,fig.height=5}
-# gather the columns for plotting as a confusion matrix
-#complex.cors %<>%
-#  mutate(prompt = factor(row.names(complex.cors))) %>%
-#  gather(response,correlation,"01":"37")
-
-#ggplot(complex.cors, aes(response, prompt)) + 
-#  geom_tile(aes(fill = correlation)) +
-#  ylim(rev(levels(complex.cors$prompt))) +
-#  scale_fill_gradient(low = "white", high = "black",guide=FALSE) +
-#  labs(x="Response", y = "Prompt") +
-#  theme(legend.position = "none", axis.ticks = element_blank()) +
-#  theme_bw(base_size = 16)
-#```
-
-Compute vocab x age interaction terms for each styntactic item
-```{r,fig.height=5,fig.width=8}
-
-#compute interaction terms each item
-i.terms.function <- function(data,x) {
-  return(summary(glm(value ~ I((vocab.mean*100)^2)*age+0, 
-                     data=filter(data,definition==x),
-                     family="binomial"))$coefficients[3,3])
-}
-
-complexity.diff <- function(item) {
-  phrases <- str_split(item," / ")[[1]]
-  first.phrase <- str_split(phrases[1], " ")[[1]]
-  second.phrase <- str_split(phrases[2], " ")[[1]]
-
-  first.diff <- setdiff(first.phrase,second.phrase)
-  second.diff <- setdiff(second.phrase,first.phrase)
-  
-  if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
-  else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
-  else{first.phrase = paste(first.diff, collapse =" ")
-       second.phrase = paste(second.diff,collapse = " ")
-       return(paste(first.phrase, second.phrase ,sep=" / "))}
-}
-
-lang.interaction.terms<- function(grammar.by.item){
-  
-  complexity.terms <- sapply(unique(filter(grammar.by.item,
-                                           type=="complexity")$definition), 
-                             function(item) i.terms.function(grammar.by.item,
-                                                             item))
-  
-  complexity.terms <- data.frame(type = "complexity",
-                                 definition=names(complexity.terms),
-                                 item=1:length(complexity.terms),
-                                 term = complexity.terms,
-                                 row.names=NULL) %>%
-    mutate(definition= sapply(definition,complexity.diff),
-           item = paste(item,definition,sep=". ")) %>%
-    select(-definition)
-
-  wordform.terms <- sapply(unique(filter(grammar.by.item,
-                                         type=="word_form")$definition), 
-                           function(item) i.terms.function(grammar.by.item,
-                                                           item))
-  
-  wordform.terms <- data.frame(type = "wordform",
-                               item=names(wordform.terms),
-                               term = wordform.terms,
-                               row.names=NULL)
-  
-#rename results to be human-readable
-interaction.terms <-rbind(complexity.terms,wordform.terms) %>%
-  arrange(term) %>%
-  mutate(item = factor(item,levels=item))
-
-return(interaction.terms)
-}
-
-spanish.grammar.by.item$definition <- spanish.grammar.by.item$item
-norwegian.grammar.by.item$definition <- norwegian.grammar.by.item$item
-danish.grammar.by.item$definition <- danish.grammar.by.item$item
-
-english.interaction.terms <- lang.interaction.terms(english.grammar.by.item)
-spanish.interaction.terms <-lang.interaction.terms(spanish.grammar.by.item)
-norwegian.interaction.terms <- lang.interaction.terms(norwegian.grammar.by.item)
-danish.interaction.terms <-  lang.interaction.terms(danish.grammar.by.item)
-
-
-
-#plot interaction terms by item
-quartz(width=10,height=5)
-ggplot(norwegian.interaction.terms,
-      aes(x=item,y=term,fill=type,label=item))+
-  geom_bar(stat="identity",alpha=.5)+
-  geom_text(angle=90,hjust=1,size=3.5)+
-  theme_bw(base_size = 14) + 
-  scale_y_continuous(name="Age x Vocabulary Interaction Z-score",
-                     limits=c(-20,25),
-                     breaks=seq(-10,15,2.5))+
-  scale_x_discrete(name="CDI Item",breaks=NULL)+
-  scale_fill_brewer(palette="Set1")+
-  scale_colour_brewer(palette="Set1")+
-  theme(legend.position="none")
-```  
-
-#Leftover analyses
-#```{r}
-#summary(lm(syntax ~ I(vocab^2) * age - 1, data=d))
-#summary(lm(morpho ~ I(vocab^2) * age - 1, data=d))
-
-#summary(lm(syntax ~ I(d$s.vocab^2) * d$age_bin - 1, data=d))
-#summary(lm(morpho ~ I(d$s.vocab^2) * d$age_bin - 1, data=d))
-#```
 ```
