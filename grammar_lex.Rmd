@@ -1,7 +1,7 @@
 ---
 title: "Grammatical Category Analysis"
 author: "Dan Yurovsky, Mika Braginsky, & Mike Frank (in no particular order)"
-date: "December 27, 2014"
+date: "December 30, 2014"
 output: html_document
 ---
 `r library(knitr)`
@@ -262,11 +262,11 @@ predicted.data$predicted <- NA
 predicted.data[predicted.data$language=="English",]$predicted <- 
   predict.lm(english.lm,predicted.data[predicted.data$language=="English",])
 predicted.data[predicted.data$language=="Spanish",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Spanish",])
+  predict.lm(spanish.lm,predicted.data[predicted.data$language=="Spanish",])
 predicted.data[predicted.data$language=="Norwegian",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Norwegian",])
+  predict.lm(norwegian.lm,predicted.data[predicted.data$language=="Norwegian",])
 predicted.data[predicted.data$language=="Danish",]$predicted <- 
-  predict.lm(english.lm,predicted.data[predicted.data$language=="Danish",])
+  predict.lm(danish.lm,predicted.data[predicted.data$language=="Danish",])
 ```
 
 Replot original correlation with fitted model.
@@ -411,12 +411,15 @@ interaction.plot <- function(lang.interaction.terms, lang) {
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(english.interaction.terms, "English")
 ```
+
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(spanish.interaction.terms, "Spanish")
 ```
+
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(norwegian.interaction.terms, "Norwegian")
 ```
+
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(danish.interaction.terms, "Danish")
 ```  
@@ -478,8 +481,7 @@ vocab.composition <- function(lang.data,lang) {
     summarise(cat = sum(value == "produces", na.rm=TRUE))
   
   d.vocab.comp <- left_join(d.vocab, d.cat) %>%
-    mutate(prop = cat / vocab.sum) %>%
-    select(-cat) 
+    mutate(prop = cat / vocab.sum)
   d.vocab.comp$language = lang
   
   return(d.vocab.comp)
@@ -513,7 +515,13 @@ Get vocabulary composition data for all languages.
 ```{r}
 # get form compositions
 lang.vocab.comp <- lang.vocab.composition(items) %>%
-  filter(lexical_category != "other")
+  mutate(lexical_category = factor(lexical_category, 
+                                   levels=c("nouns","predicates",
+                                            "function_words","other"),
+                                   labels=c("Nouns", "Predicates",
+                                            "Function Words","Other"))) %>%
+  filter(lexical_category != "Other")
+  
 
 # get data for kids in each language
 vocab.comp.english <- vocab.composition(d.english,"English")
@@ -527,8 +535,8 @@ summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
   filter(age > 15 & age < 33) %>%
   mutate(age.group = cut(age, breaks = c(15, 20, 24, 28, 32)),
          language = factor(language,
-                           levels=c("English", "Spanish", 
-                                    "Norwegian", "Danish")),
+                           levels = c("English", "Spanish", 
+                                      "Norwegian", "Danish")),
          lexical_category = factor(lexical_category, 
                                    levels = c("nouns", "predicates", 
                                               "function_words", "other"),
@@ -582,14 +590,8 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
         legend.position="none")
 ```
 
-Plot vocabulary composition by lexical category.
+Plot vocabulary composition by language and lexical category.
 ```{r, fig.width=10, fig.height=8}
-lang.vocab.comp$lexical_category <- factor(lang.vocab.comp$lexical_category, 
-                                           levels=c("function_words","nouns",
-                                                    "predicates","other"),
-                                           labels=c("Function Words","Nouns",
-                                                    "Predicates","Other"))
-
 ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
        aes(x=vocab.mean, y=prop, colour = age.group, 
            fill = age.group)) +
@@ -601,6 +603,79 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
   geom_smooth(aes(group=age.group), method='loess', span=0.5) +
   scale_y_continuous(name = "Proportion of total vocabulary") +
   scale_x_continuous(name = "Vocabulary Size") +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1") +
+  scale_fill_brewer(palette = "Set1")+
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="none")
+```
+
+Re-compute vocabulary composition data as a proportion of items on the CDI rather than a proportion of vocabulary size.
+```{r}
+means.comp <- left_join(filter(summary.vocab.comp, lexical_category != "Other"),
+                        lang.vocab.comp) %>%
+  mutate(lexical_category = factor(lexical_category,
+                                   levels = c("Nouns", "Predicates", 
+                                              "Function Words", "Other")), 
+         cdi.prop = cat / num.per.cat) %>%
+  select(-prop, -prop.per.cat, -n, -num.per.cat)
+
+means.comp <- left_join(ms, means.comp) %>%
+  mutate(language = factor(language, levels = c("English", "Spanish", 
+                                                "Norwegian", "Danish")))
+```
+
+Use Age and Lexical Category Score to predict Morphology and Syntax Scores, for each lexical category.
+```{r}
+plot.vocab.comp.prediction <- function(category){
+  p <- ggplot(filter(means.comp, lexical_category==category),
+              aes(x = cdi.prop, y = score, colour = age.group, fill = age.group,
+                  label = age.group)) + 
+        #geom_point(alpha=.5, size=.8) + 
+    geom_jitter(alpha=.5,size=.8) +
+    geom_smooth(method="lm", formula = y ~ I(x^2) - 1) + 
+    facet_grid(language ~ measure) + 
+    scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
+                       name = "Category Size") + 
+    scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                       "Score (Mean Items)") + 
+    theme_bw(base_size = 14) +
+    ggtitle(category) +
+    scale_color_brewer(palette="Set1") +
+    scale_fill_brewer(palette="Set1") 
+  
+  return(p)
+}
+```
+
+```{r, fig.width=10, fig.height=8}
+plot.vocab.comp.prediction("Nouns")
+```
+
+```{r, fig.width=10, fig.height=8}
+plot.vocab.comp.prediction("Predicates")
+```
+
+```{r, fig.width=10, fig.height=8}
+plot.vocab.comp.prediction("Function Words")
+```
+
+Plot new vocabulary composition by language.
+```{r, fig.width=10, fig.height=8}
+ggplot(filter(means.comp, lexical_category != "Other"),
+       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, 
+           shape = lexical_category, fill = lexical_category,
+           label=lexical_category)) +
+  geom_jitter(size = .75, alpha = 0.25) +
+  facet_wrap(~ language) +
+#  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
+#             linetype="dashed", color="grey") + #baselines for each language
+  geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
+  scale_y_continuous(name = "Proportion of CDI Category") +
+  scale_x_continuous(name = "Vocabulary Size") +
+  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
   theme_bw(base_size=14) + 
   scale_color_brewer(palette = "Set1") +
   scale_fill_brewer(palette = "Set1")+
