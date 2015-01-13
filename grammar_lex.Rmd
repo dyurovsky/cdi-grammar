@@ -267,6 +267,15 @@ norwegian.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.b
 danish.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.bin - measure - 1, 
                     data=filter(ms,language=="Danish"))
 
+english.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1,
+                       data=filter(ms,language=="English"))
+spanish.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
+                       data=filter(ms,language=="Spanish"))
+norwegian.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
+                         data=filter(ms,language=="Norwegian"))
+danish.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
+                      data=filter(ms,language=="Danish"))
+
 predicted.data <- as.data.frame(ms)
 
 predicted.data$predicted.grp <- NA
@@ -403,6 +412,7 @@ ggplot(coefs,
   ylab("Age interaction coefficient") + 
   xlab("Language") +
   theme(legend.position = "bottom") +
+  theme_bw(base_size = 14) +
   scale_fill_brewer(palette = "Set1",
                     name="")
 #ggsave(file=("coeffs.pdf"), width=6, height=4)
@@ -733,18 +743,13 @@ Re-compute vocabulary composition data as a proportion of items on the CDI rathe
 ```{r}
 prop.comp <- left_join(filter(summary.vocab.comp, lexical_category != "Other"),
                         lang.vocab.comp) %>%
-  mutate(#lexical_category = factor(lexical_category,
-          #                         levels = c("Nouns", "Predicates", 
-           #                                   "Function Words", "Other")), 
-         cdi.prop = cat / num.per.cat) %>%
+  mutate(cdi.prop = cat / num.per.cat) %>%
   select(-prop, -prop.per.cat, -n, -num.per.cat)
-
-#means.comp <- left_join(ms, summary.comp)
 ```
 
 Use Age and Lexical Category Score to predict Morphology and Syntax Scores, for each lexical category.
 ```{r}
-plot.vocab.comp.prediction <- function(category){
+plot.vocab.comp.prediction <- function(category) {
   p <- ggplot(filter(prop.comp, lexical_category==category),
               aes(x = cdi.prop, y = score, colour = age.group, fill = age.group,
                   label = age.group)) + 
@@ -775,6 +780,87 @@ plot.vocab.comp.prediction("Predicates")
 
 ```{r, fig.width=10, fig.height=8}
 plot.vocab.comp.prediction("Function Words")
+```
+
+Fit models to vocab composition data.
+```{r}
+comp.lm <- function(lang) {
+  
+  prop.comp.lang <- filter(prop.comp, language == lang, lexical_category != "Other")
+  comp.age.lm <- lm(cdi.prop ~ lexical_category : I((vocab.mean*100)^2):age.group +
+                           lexical_category : I((vocab.mean*100)):age.group + 0,
+                         data=prop.comp.lang)
+  comp.noage.lm <- lm(cdi.prop ~ lexical_category : I((vocab.mean*100)^2) + 
+                           lexical_category : I((vocab.mean*100)) + 0,
+                         data=prop.comp.lang)
+  prop.comp.lang$age.predict <- predict.lm(comp.age.lm)
+  prop.comp.lang$noage.predict <- predict.lm(comp.noage.lm)
+  prop.comp.lang$language <- lang
+  return(prop.comp.lang)
+  }
+
+comp.english <- comp.lm("English")
+comp.spanish <- comp.lm("Spanish")
+comp.norweigian <- comp.lm("Norwegian")
+comp.danish <- comp.lm("Danish")
+
+comp.all <- rbind(comp.english, comp.spanish, comp.norweigian, comp.danish) %>%
+  mutate(language = factor(language,
+                           levels = c("English", "Spanish", "Norwegian", "Danish")))
+```
+
+Plot predictions of model with age.
+```{r, fig.width=10, fig.height=6}
+#quartz(width=10, height=6)
+ggplot(comp.all,
+       aes(x=vocab.mean, y=cdi.prop, colour=age.group, linetype=lexical_category)) +
+#       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, 
+#           shape=lexical_category, fill=lexical_category,
+#           label=lexical_category)) +
+#  geom_jitter(size=0.7, alpha=0.2, pch="o") +
+  geom_line(aes(y = age.predict)) +
+  facet_wrap(~language) +
+#  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
+#             linetype="dashed", color="grey") + #baselines for each language
+  #geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
+  scale_y_continuous(name = "Proportion of CDI Category") +
+  scale_x_continuous(name = "Vocabulary Size") +
+#  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1", name = "Age Group (months)") +
+  scale_linetype(name = "Lexical Category") +
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="right")
+#ggsave(file=("composition_model_age_points.png"), width=10, height=6)
+```
+
+Plot predictions of model without age.
+```{r, fig.width=10, fig.height=8}
+#quartz(width=10, height=6)
+ggplot(comp.all,
+       aes(x=vocab.mean, y=cdi.prop, colour=age.group, linetype=lexical_category)) +
+#       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, 
+#           shape=lexical_category, fill=lexical_category,
+#           label=lexical_category)) +
+#  geom_jitter(size=0.7, alpha=0.2, pch="o") +
+  geom_line(aes(y = noage.predict)) +
+  facet_wrap(~language) +
+#  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
+#             linetype="dashed", color="grey") + #baselines for each language
+  #geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
+  scale_y_continuous(name = "Proportion of CDI Category") +
+  scale_x_continuous(name = "Vocabulary Size") +
+#  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
+  theme_bw(base_size=14) + 
+  scale_color_brewer(palette = "Set1", name = "Age Group (months)") +
+  scale_linetype(name = "Lexical Category") +
+  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+        axis.title.y = element_text(vjust=0.35),
+        axis.title.x = element_text(vjust=-0.5),
+        legend.position="right")
+#ggsave(file=("composition_model_age_points.png"), width=10, height=6)
 ```
 
 Plot new vocabulary composition by language.
