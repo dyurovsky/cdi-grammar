@@ -13,3 +13,7 @@
 # Other stuff
 .DS_Store
 $*.xlsx
+
+*.aux
+*.log
+*.gz
