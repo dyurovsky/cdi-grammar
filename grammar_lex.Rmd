@@ -306,23 +306,28 @@ Replot original correlation with fitted model.
 ggplot(predicted.data, aes(x = vocab.mean, y = score, 
                            colour = age.group, fill = age.group,
                            label = age.group)) + 
-
-  geom_jitter(alpha=.6, size=.8, pch="o") +
-  geom_line(aes(y=predicted.grp),size=0.8) + 
+  geom_jitter(alpha=.3, size=.75) +
+  geom_line(aes(y=predicted.grp),size=0.65) + 
 #  facet_grid(measure~language) + 
   facet_grid(language~measure) + 
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
                      name = "Vocabulary Size") + 
   scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
                      "Score (Mean Items)") + 
   theme_bw(base_size = 11) +
-  theme(legend.position = "bottom") +
+  theme(legend.position = c(0.06,0.912),
+        legend.text = element_text(size=6),
+        legend.title = element_text(size=6),
+        legend.key.height = unit(0.8, "char"),
+        legend.key.width = unit(0.4, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill="transparent")) +
   scale_color_brewer(palette="Set1",
-                     name="Age Group (months)") +
+                     name="Age Group\n (months)") +
 #                     labels=c("16-19","20-23","24-27","28-31")) +
   scale_fill_brewer(palette="Set1",
                     guide=FALSE)
-#ggsave(file=("grammar.pdf"), width=6, height=6)
+ggsave(file=("~/Documents/projects/wordbank_nsf/figures/grammar.png"), width=6, height=6, dpi=500)
 ```
 
 Same plot but with equal number of kids age bins.
@@ -865,26 +870,34 @@ ggplot(comp.all,
 
 Plot new vocabulary composition by language.
 ```{r, fig.width=10, fig.height=8}
-#quartz(width=8, height=6)
+quartz(width=8, height=6)
 ggplot(filter(prop.comp, lexical_category != "Other"),
-       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, 
-           shape=lexical_category, fill=lexical_category,
-           label=lexical_category)) +
-  geom_jitter(size=0.7, alpha=0.2, pch="o") +
+       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, label=lexical_category)) +
+  geom_jitter(alpha=0.17, size=0.75) +
   facet_wrap(~ language) +
 #  geom_hline(data=lang.vocab.comp,aes(yintercept=prop.per.cat),
 #             linetype="dashed", color="grey") + #baselines for each language
   geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
-  scale_y_continuous(name = "Proportion of CDI Category") +
-  scale_x_continuous(name = "Vocabulary Size") +
+  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                     name = "Proportion of CDI Category") +
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
+                     name = "Vocabulary Size") +
 #  geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
-  theme_bw(base_size=14) + 
+  theme_bw(base_size=11) + 
   scale_color_brewer(palette = "Set1", name = "Lexical Category") +
-  scale_fill_brewer(palette = "Set1", guide = FALSE) +
-  scale_shape_discrete(guide = FALSE) +
-  theme(axis.text.x = element_text(angle=-40, hjust = 0),
-        axis.title.y = element_text(vjust=0.35),
-        axis.title.x = element_text(vjust=-0.5),
-        legend.position="bottom")
+#  scale_fill_brewer(palette = "Set1", guide = FALSE) +
+#  scale_shape_discrete(guide = FALSE) +
+#  theme(axis.text.x = element_text(angle=-40, hjust = 0),
+#        axis.title.y = element_text(vjust=0.35),
+#        axis.title.x = element_text(vjust=-0.5),
+#        legend.position="bottom")
+  theme(legend.position = c(0.09,0.92),
+        legend.text = element_text(size=9),
+        legend.title = element_text(size=9),
+        legend.key.height = unit(0.9, "char"),
+        legend.key.width = unit(0.4, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill="transparent"))
 #ggsave(file=("composition.pdf"), width=8, height=6)
+#ggsave(file=("~/Documents/projects/wordbank_nsf/figures/composition.png"), width=8, height=6, dpi=500)
 ```
