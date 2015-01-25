@@ -17,3 +17,5 @@ $*.xlsx
 *.aux
 *.log
 *.gz
+*.bbl
+*.blg
