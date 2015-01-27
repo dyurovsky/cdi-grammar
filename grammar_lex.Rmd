@@ -1048,7 +1048,9 @@ get.lang.noun.verb <- function(lang.items) {
   
   }
 
-lang.noun.verb <- get.lang.noun.verb(items) %>%
+lang.noun.verb <- get.lang.noun.verb(items)
+lang.noun.verb %<>%
+  ungroup() %>%
   mutate(language = factor(language,
                            levels = c("English", "Spanish", 
                                       "Norwegian", "Danish")),
@@ -1086,11 +1088,11 @@ ggplot(prop.noun.verb, aes(x=vocab.mean, y=pos.prop, colour=pos, label=pos)) +
 
 ```{r}
 linear.mod.coef.fun <- function(pos.prop, vocab.mean, age) {
-  return(coef(lm(cdi.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
+  return(coef(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
   }
 
 linear.mod.se.fun <- function(pos.prop, vocab.mean, age) {
-  return(summary(lm(cdi.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))$coefficients["I(vocab.mean * 100):age", "Std. Error"])
+  return(summary(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))$coefficients["I(vocab.mean * 100):age", "Std. Error"])
   }
 
 noun.verb.coefs <- prop.noun.verb %>%
