@@ -22,6 +22,8 @@ library(stringr)
 library(pcaPP)
 library(directlabels)
 library(proto)
+library(Unicode)
+library(RGtk2)
 ```
 
 Load in wordbank data
@@ -470,24 +472,28 @@ i.terms.function <- function(data,x) {
                      family="binomial"))$coefficients[3,3])
   }
 
-complexity.diff <- function(item) {
-  
-  if(length(grep("/", item)) == 0) {return(item)}
-  else{
-    phrases <- str_split(item," / ")[[1]]
-    first.phrase <- str_split(phrases[1], " ")[[1]]
-    second.phrase <- str_split(phrases[2], " ")[[1]]
-  
-    first.diff <- setdiff(first.phrase,second.phrase)
-    second.diff <- setdiff(second.phrase,first.phrase)
-  
-    if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
-    else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
-    else{first.phrase = paste(first.diff, collapse =" ")
-         second.phrase = paste(second.diff,collapse = " ")
-         return(paste(first.phrase, second.phrase ,sep=" / "))}
-    }
-  }
+# complexity.diff <- function(item) {
+#   
+#   if(length(grep("/", item)) == 0) {return(item)}
+#   else{
+#     phrases <- str_split(item," / ")[[1]]
+#     first.phrase <- str_split(phrases[1], " ")[[1]]
+#     second.phrase <- str_split(phrases[2], " ")[[1]]
+#   
+#     first.diff <- setdiff(first.phrase,second.phrase)
+#     second.diff <- setdiff(second.phrase,first.phrase)
+#   
+#     if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
+#     else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
+#     else{first.phrase = paste(first.diff, collapse =" ")
+#          second.phrase = paste(second.diff,collapse = " ")
+#          return(paste(first.phrase, second.phrase ,sep=" / "))}
+#     }
+#   }
+
+ complexity.diff <- function(item) {
+   return(item)
+   }
 
 lang.interaction.terms<- function(grammar.by.item) {
   
@@ -498,11 +504,12 @@ lang.interaction.terms<- function(grammar.by.item) {
   
   complexity.terms <- data.frame(type = "complexity",
                                  definition=names(complexity.terms),
-                                 item=1:length(complexity.terms),
+#                                 item=1:length(complexity.terms),
                                  term = complexity.terms,
                                  row.names=NULL) %>%
-    mutate(definition= sapply(definition,complexity.diff),
-           item = paste(item,definition,sep=". ")) %>%
+    mutate(definition = sapply(definition,complexity.diff),
+           item = definition) %>%
+#           item = paste(item,definition,sep=". ")) %>%
     select(-definition)
   
   wordform.terms <- sapply(unique(filter(grammar.by.item,
@@ -539,38 +546,43 @@ interaction.plot <- function(lang.interaction.terms, lang) {
   plt <- ggplot(lang.interaction.terms,
                 aes(x=item,y=term,fill=type,label=item)) +
     geom_bar(stat="identity", position="identity", alpha=.5) +
-    geom_text(y=0.15, angle=90, hjust=0, size=3.5) +
-    theme_bw(base_size = 14) +
+    geom_text(y=0.15, angle=90, hjust=0, size=3.3, parse=F) +
+    theme_bw(base_size = 12) +
     scale_y_continuous(name="Age x Vocabulary Interaction Z-score") +
     #                     limits=c(-10,20),
     #                     breaks=seq(-10,20,2.5)) +
     scale_x_discrete(name="CDI Item",breaks=NULL) +
     scale_fill_brewer(palette="Set1") +
     scale_colour_brewer(palette="Set1") +
-    theme(legend.position="bottom") +
+    theme(legend.position="none") +
     ggtitle(lang)
   return(plt)
   }
 ```
 
 ```{r,fig.width=10,fig.height=5}
-interaction.plot(english.interaction.terms, "English") #%>%
-#ggsave(file=("english_interactions.png"), width=10, height=5)
+#quartz(width=10, height=5)
+#cairo_pdf("~/Documents/english.pdf", family="DejaVu Sans", width=10, height=5)
+interaction.plot(english.interaction.terms, "English")
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/english_interactions.png"), width=10, height=5)
 ```
 
 ```{r,fig.width=10,fig.height=5}
+quartz(width=10, height=5)
+#cairo_pdf("~/Documents/spanish.pdf", family="DejaVu Sans", width=10, height=5)
 interaction.plot(spanish.interaction.terms, "Spanish") #%>%
-#ggsave(file=("spanish_interactions.png"), width=10, height=5)
+#dev.off()
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/spanish_interactions.png"), width=10, height=5)
 ```
 
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(norwegian.interaction.terms, "Norwegian") #%>%
-#ggsave(file=("norwegian_interactions.png"), width=10, height=5)
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/norwegian_interactions.png"), width=10, height=5)
 ```
 
 ```{r,fig.width=10,fig.height=5}
 interaction.plot(danish.interaction.terms, "Danish") #$>$
-#ggsave(file=("danish_interactions.png"), width=10, height=5)
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/danish_interactions.png"), width=10, height=5)
 ```  
 
 
