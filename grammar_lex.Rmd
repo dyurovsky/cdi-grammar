@@ -551,11 +551,11 @@ interaction.plot <- function(lang.interaction.terms, lang) {
     scale_y_continuous(name="Age x Vocabulary Interaction Z-score") +
     #                     limits=c(-10,20),
     #                     breaks=seq(-10,20,2.5)) +
-    scale_x_discrete(name="CDI Item",breaks=NULL) +
+    scale_x_discrete(name="",breaks=NULL) +
     scale_fill_brewer(palette="Set1") +
     scale_colour_brewer(palette="Set1") +
-    theme(legend.position="none") +
-    ggtitle(lang)
+    theme(legend.position="none")
+#    ggtitle(lang)
   return(plt)
   }
 ```
