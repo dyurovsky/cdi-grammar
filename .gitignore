@@ -19,3 +19,5 @@ $*.xlsx
 *.gz
 *.bbl
 *.blg
+*.dvi
+*.pdf
