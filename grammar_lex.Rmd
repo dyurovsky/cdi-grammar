@@ -24,6 +24,9 @@ library(directlabels)
 library(proto)
 library(Unicode)
 library(RGtk2)
+library(extrafont)
+font_import()
+font = "Tahoma"
 ```
 
 Load in wordbank data
@@ -209,7 +212,6 @@ ms <- summary.data %>% gather(measure, score, complexity:wordform) %>%
 #ms %>% 
 #  group_by(language, age.bin) %>% 
 #  summarise(n = n())
-
 ```
 
 Using Age and Vocab to predict Morphology and Syntax Scores.
@@ -232,164 +234,142 @@ ggplot(ms, aes(x = vocab.mean, y = score, colour = age.bin, fill = age.bin,
   scale_fill_brewer(palette="Set1") 
 ```
 
-Using Morphology scores to predict Syntax scores.
-```{r, fig.width=8, fig.height=6}
-#quartz(width=8,height=7.5)
-ggplot(summary.data,aes(x = wordform, y = complexity, fill=age.group,colour=age.group,
-                        label=age.group)) + 
-  facet_wrap( ~ language) +
-  geom_jitter(size=1)+
-  geom_smooth(method="lm", formula = y ~ exp(x) - 1) + 
-  scale_x_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),
-                     name = "Morphology Score") + 
-  scale_y_continuous(limits = c(0,1.05), breaks=seq(0,1,.2),"Syntax Score") + 
-  scale_color_brewer(palette="Set1") +
-  scale_fill_brewer(palette="Set1") +
-  theme_bw(base_size = 14)
+Model comparison
+```{r}
+linear <- formula(score ~ I(vocab.mean*100))
+quadratic <- formula(score ~ I((vocab.mean*100)^2))
+linear.quadratic <- formula(score ~ I((vocab.mean*100)^2) + I(vocab.mean*100))
+quadratic.age <- formula(score ~ I((vocab.mean*100)^2) * age)
+quadratic.age.noint <- formula(score ~ I((vocab.mean*100)^2) * age + 0)
+grammar.formulas <- c(linear, quadratic, linear.quadratic, quadratic.age, quadratic.age.noint)
+
+grammar.models <- ms %>%
+  group_by(language, measure) %>%
+  do(linear = lm(grammar.formulas[[1]], .),
+     quadratic = lm(grammar.formulas[[2]], .),
+     linear.quadratic = lm(grammar.formulas[[3]], .),
+     quadratic.age = lm(grammar.formulas[[4]], .),
+     quadratic.age.noint = lm(grammar.formulas[[5]], .)) %>%
+  mutate(linear_rsq = summary(linear)$adj.r.squared,
+         quadratic_rsq = summary(quadratic)$adj.r.squared,
+         linear.quadratic_rsq = summary(linear.quadratic)$adj.r.squared,
+         quadratic.age_rsq = summary(quadratic.age)$adj.r.squared,
+         quadratic.age.noint_rsq = summary(quadratic.age.noint)$adj.r.squared)
+
+grammar.anovas <- grammar.models %>%
+  do(linear_quadratic_anova = anova(.$linear, .$quadratic),
+     quadratic_linear.quadratic_anova = anova(.$quadratic, .$linear.quadratic),
+     linear.quadratic_quadratic.age_anova = anova(.$linear.quadratic, .$quadratic.age),
+     quadratic.age_quadratic.age.noint_anova = anova(.$quadratic.age, .$quadratic.age.noint))
+
+grammar.p_values <- grammar.anovas %>%
+  do(linear_quadratic_p = .$linear_quadratic_anova$`Pr(>F)`[[2]],
+     quadratic_linear.quadratic_p = .$quadratic_linear.quadratic_anova$`Pr(>F)`[[2]],
+     linear.quadratic_quadratic.age_p = .$linear.quadratic_quadratic.age_anova$`Pr(>F)`[[2]],
+     quadratic.age_quadratic.age.noint_p = .$quadratic.age_quadratic.age.noint_anova$`Pr(>F)`[[2]]) %>%
+  mutate(linear_quadratic_p = linear_quadratic_p[[1]],
+         quadratic_linear.quadratic_p = quadratic_linear.quadratic_p[[1]],
+         linear.quadratic_quadratic.age_p = linear.quadratic_quadratic.age_p[[1]],
+         quadratic.age_quadratic.age.noint_p = quadratic.age_quadratic.age.noint_p[[1]])
+```
+
+r-squared values of each model
+```{r}
+grammar.models %>% select(-linear, -quadratic, -linear.quadratic, -quadratic.age, -quadratic.age.noint)
+```
+
+p-values of each successive pair of models
+```{r}
+grammar.p_values$language = grammar.models$language
+grammar.p_values$measure = grammar.models$measure
+grammar.p_values <- grammar.p_values[,c(5,6,1:4)]
+grammar.p_values
 ```
 
 Examine relationship between vocab size, age, and syntax/morphology scores.
 ```{r}
-# fit regressions to data
-english.lm.grp <- lm(score ~ I((vocab.mean*100)^2) * age.group * measure - age.group - measure - 1,
-                     data=filter(ms,language=="English"))
-spanish.lm.grp <- lm(score ~ I((vocab.mean*100)^2) * age.group * measure - age.group - measure - 1, 
-                     data=filter(ms,language=="Spanish"))
-norwegian.lm.grp <- lm(score ~ I((vocab.mean*100)^2) * age.group * measure - age.group - measure - 1, 
-                       data=filter(ms,language=="Norwegian"))
-danish.lm.grp <- lm(score ~ I((vocab.mean*100)^2) * age.group * measure - age.group - measure - 1, 
-                    data=filter(ms,language=="Danish"))
-
-#english.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.bin - measure - 1,
-#                     data=filter(ms,language=="English"))
-#spanish.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.bin - measure - 1, 
-#                     data=filter(ms,language=="Spanish"))
-#norwegian.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.bin - measure - 1, 
-#                       data=filter(ms,language=="Norwegian"))
-#danish.lm.bin <- lm(score ~ I((vocab.mean*100)^2) * age.bin * measure - age.bin - measure - 1, 
-#                    data=filter(ms,language=="Danish"))
-
-english.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1,
-                       data=filter(ms,language=="English"))
-spanish.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
-                       data=filter(ms,language=="Spanish"))
-norwegian.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
-                         data=filter(ms,language=="Norwegian"))
-danish.lm.noage <- lm(score ~ I((vocab.mean*100)^2) * measure - measure - 1, 
-                      data=filter(ms,language=="Danish"))
-
 predicted.data <- as.data.frame(ms)
+predicted.data$predicted <- NA
+predicted.data$predicted.pin <- NA
 
-predicted.data$predicted.grp <- NA
-predicted.data$predicted.bin <- NA
+for (lang in c("English", "Spanish", "Norwegian", "Danish")) {
+  for (meas in c("Complexity", "Word Form")) {
+    model <- lm(score ~ I((vocab.mean*100)^2) * age.group,
+                data=filter(ms,language==lang, measure==meas))
+    pinned.model <- lm(score ~ I((vocab.mean*100)^2) * age.group - age.group + 0,
+                data=filter(ms,language==lang, measure==meas))
+    print(anova(model, pinned.model))
+    predicted.data[predicted.data$language==lang & predicted.data$measure==meas,]$predicted <- 
+  predict.lm(model, predicted.data[predicted.data$language==lang & predicted.data$measure==meas,])
+    predicted.data[predicted.data$language==lang & predicted.data$measure==meas,]$predicted.pin <- 
+  predict.lm(pinned.model, predicted.data[predicted.data$language==lang & predicted.data$measure==meas,])
+  }
+}
 
-predicted.data[predicted.data$language=="English",]$predicted.grp <- 
-  predict.lm(english.lm.grp, predicted.data[predicted.data$language=="English",])
-predicted.data[predicted.data$language=="Spanish",]$predicted.grp <- 
-  predict.lm(spanish.lm.grp, predicted.data[predicted.data$language=="Spanish",])
-predicted.data[predicted.data$language=="Norwegian",]$predicted.grp <- 
-  predict.lm(norwegian.lm.grp, predicted.data[predicted.data$language=="Norwegian",])
-predicted.data[predicted.data$language=="Danish",]$predicted.grp <- 
-  predict.lm(danish.lm.grp, predicted.data[predicted.data$language=="Danish",])
-
-#predicted.data[predicted.data$language=="English",]$predicted.bin <- 
-#  predict.lm(english.lm.bin, predicted.data[predicted.data$language=="English",])
-#predicted.data[predicted.data$language=="Spanish",]$predicted.bin <- 
-#  predict.lm(spanish.lm.bin, predicted.data[predicted.data$language=="Spanish",])
-#predicted.data[predicted.data$language=="Norwegian",]$predicted.bin <- 
-#  predict.lm(norwegian.lm.bin, predicted.data[predicted.data$language=="Norwegian",])
-#predicted.data[predicted.data$language=="Danish",]$predicted.bin <- 
-#  predict.lm(danish.lm.bin, predicted.data[predicted.data$language=="Danish",])
+# get.lm <- function(in.language, in.measure) {
+#   return(filter(grammar.models, language==in.language,
+#                 measure==in.measure)$quadratic.age.noint[[1]])
+#   }
+# 
+# predict.data <- function(in.data, in.language, in.measure) {
+#   model <- filter(grammar.models, language==in.language,
+#                   measure==in.measure)$quadratic.age.noint[[1]]
+#   out.data <- in.data %>%
+#     filter(language==in.language, measure==in.measure) %>%
+#     mutate(predicted = predict.lm(model, .))
+#   return(out.data)
+# }
+# 
+# nrow(filter(ms, language=="Spanish", measure=="Complexity"))
+# nrow(predict.data(filter(ms, language=="Spanish", measure=="Complexity"), "Spanish", "Complexity"))
+# 
+# pre <- predict.data(ms, "English", "Complexity")
+# 
+# pred <- ms %>%
+#   filter(language=="Spanish", measure=="Complexity") %>%
+#   mutate(predicted = predict.lm(get.lm("Spanish", "Complexity"), .))
+# #  group_by(language, measure) %>%
+# #  mutate(predicted = predict.data(., language, measure))
+# 
+# pre <- as.data.frame(ms) %>%
+#   group_by(language, measure) %>%
+#   do(predicted = predict.lm(filter(grammar.models, language==.$language,
+#                     measure==.$measure)$quadratic.age.noint[[1]], .))
+#    model = filter(grammar.models, language==.$language,
+#                    measure==.$measure)$quadratic.age.noint[[1]])
+#    predicted = predict.lm(filter(grammar.models, .))
 ```
 
 Replot original correlation with fitted model.
 ```{r,fig.width=12,fig.height=8}
-#quartz(width=6,height=6)
+predicted.data$language <- factor(predicted.data$language, levels = c("Norwegian", "English", "Danish", "Spanish"))
+quartz(width=6,height=6)
 ggplot(predicted.data, aes(x = vocab.mean, y = score, 
                            colour = age.group, fill = age.group,
                            label = age.group)) + 
   geom_jitter(alpha=.3, size=.75) +
-  geom_line(aes(y=predicted.grp),size=0.65) + 
+  geom_line(aes(y=predicted.pin),size=0.65) + 
 #  facet_grid(measure~language) + 
   facet_grid(language~measure) + 
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
                      name = "Vocabulary Size") + 
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+  scale_y_continuous(limits = c(0,1), breaks = seq(0,1,.25),
                      "Score (Mean Items)") + 
   theme_bw(base_size = 11) +
   theme(legend.position = c(0.06,0.912),
         legend.text = element_text(size=6),
         legend.title = element_text(size=6),
-        legend.key.height = unit(0.8, "char"),
+        legend.key.height = unit(0.75, "char"),
         legend.key.width = unit(0.4, "cm"),
         legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent")) +
-  scale_color_brewer(palette="Set1",
+        legend.background = element_rect(fill="transparent"),
+        text=element_text(family=font)) +
+  scale_color_brewer(type="div", palette=9,
                      name="Age Group\n (months)") +
 #                     labels=c("16-19","20-23","24-27","28-31")) +
-  scale_fill_brewer(palette="Set1",
+  scale_fill_brewer(palette = "Spectral",
                     guide=FALSE)
-ggsave(file=("~/Documents/projects/wordbank_nsf/figures/grammar.png"), width=6, height=6, dpi=500)
-```
-
-Same plot but with equal number of kids age bins.
-```{r,fig.width=12,fig.height=8}
-#quartz(width=6,height=6)
-ggplot(predicted.data, aes(x = vocab.mean, y = score, 
-                           colour = age.bin, fill = age.bin,
-                           label = age.bin)) + 
-
-  geom_jitter(alpha=.6, size=.8, pch="o") +
-  geom_line(aes(y=predicted.bin),size=0.8) + 
-#  facet_grid(measure~language) + 
-  facet_grid(language~measure) + 
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
-                     name = "Vocabulary Size") + 
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
-                     "Score (Mean Items)") + 
-  theme_bw(base_size = 11) +
-  theme(legend.position = "bottom") +
-  scale_color_brewer(palette="Set1",
-                     name="Age Group (months)") +
-#                     labels=c("16-19","20-23","24-27","28-31")) +
-  scale_fill_brewer(palette="Set1",
-                    guide=FALSE)
-#ggsave(file=("grammar.pdf"), width=6, height=6)
-```
-
-```{r}
-#plot.measure <- function(meas) {
-#plot <- ggplot(filter(predicted.data, measure==meas),
-#               aes(x = vocab.mean, y = score, 
-#               colour = age.group, fill = age.group,
-#               label = age.group)) +
-#  geom_jitter(alpha=.6,size=.8, pch="o") +
-#  geom_line(aes(y=predicted.grp),size=0.9) + 
-#  facet_grid(language~.) + 
-#  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.1),
-#                     name = "Vocabulary Size") + 
-#  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
-#                     paste(meas, "Score (Mean Items)")) + 
-#  theme_bw(base_size = 11) +
-#  scale_color_brewer(palette="Set1",
-#                     name="Age Group\n (months)",
-#                     labels=c("16-19","20-23","24-27","28-31")) +
-#  scale_fill_brewer(palette="Set1",
-#                    guide=FALSE) +
-#  theme(legend.position = "bottom",
-#        legend.background = element_rect(colour = "grey"))
-#return(plot)
-#}
-```
-
-```{r}
-#quartz(width=4,height=7)
-#plot.measure("Complexity") %>%
-#ggsave(file=("complexity.pdf"), width=4, height=7)
-
-#quartz(width=4,height=7)
-#plot.measure("Word Form") %>%
-#ggsave(file=("wordform.png"), width=4, height=7)
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/grammar.png"), width=6, height=6, dpi=300)
 ```
 
 Compute (vocab x age) interaction coefficients for each measure and language.
@@ -410,6 +390,8 @@ grammar.coefs <- ms %>%
   group_by(language, measure) %>%
   summarise(coef = mod.coef.fun(score,vocab.mean,age),
             se = mod.se.fun(score,vocab.mean,age))
+grammar.coefs$language = factor(grammar.coefs$language, levels=c("Norwegian", "English",
+                                                                 "Danish", "Spanish"))
 ```
 
 Plot coefficients for each language.
@@ -423,15 +405,16 @@ ggplot(grammar.coefs,
   ylab("Age interaction coefficient") + 
   xlab("Language") +
   theme_bw(base_size = 14) +
-  scale_fill_brewer(palette = "Set1",
+  scale_fill_brewer(palette="Set2",
                     name="") +
-  theme(legend.position = c(0.12,0.95),
+  theme(text=element_text(family=font),
+        legend.position = c(0.12,0.95),
         legend.text = element_text(size=10),
         legend.key.height = unit(0.9, "char"),
         legend.key.width = unit(0.4, "cm"),
         legend.key = element_blank(),
         legend.background = element_rect(fill="transparent"))
-ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_wordform_complexity.png"), width=6, height=4)
+ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_wordform_complexity.png"), width=6, height=4, dpi=300)
 ```
 
 Get (kid x item x {vocab size, value}) data for wordform and complexity items.
@@ -467,9 +450,10 @@ Compute (vocab x age) interaction terms for each wordform and complexity item.
 ```{r,fig.height=5,fig.width=8}
 #compute interaction terms each item
 i.terms.function <- function(data,x) {
-  return(summary(glm(value ~ I((vocab.mean*100)^2)*age+0, 
-                     data=filter(data,definition==x),
-                     family="binomial"))$coefficients[3,3])
+  return(coef(lm(value ~ I((vocab.mean*100)^2) * age + 0,
+              data=filter(data,definition==x)))["I((vocab.mean * 100)^2):age"])
+#  return(summary(lm(value ~ I((vocab.mean*100)^2) * age + 0, 
+#                    data=filter(data,definition==x))$coefficients[3,3])
   }
 
 # complexity.diff <- function(item) {
@@ -535,7 +519,7 @@ lang.interaction.terms<- function(grammar.by.item) {
 #danish.grammar.by.item$definition <- danish.grammar.by.item$item
 
 english.interaction.terms <- lang.interaction.terms(english.grammar.by.item)
-spanish.interaction.terms <-lang.interaction.terms(spanish.grammar.by.item)
+spanish.interaction.terms <- lang.interaction.terms(spanish.grammar.by.item)
 norwegian.interaction.terms <- lang.interaction.terms(norwegian.grammar.by.item)
 danish.interaction.terms <-  lang.interaction.terms(danish.grammar.by.item)
 ```
@@ -548,13 +532,14 @@ interaction.plot <- function(lang.interaction.terms, lang) {
     geom_bar(stat="identity", position="identity", alpha=.5) +
     geom_text(y=0.15, angle=90, hjust=0, size=3.3, parse=F) +
     theme_bw(base_size = 12) +
-    scale_y_continuous(name="Age x Vocabulary Interaction Z-score") +
+    scale_y_continuous(name="Age Interaction Coefficient") +
     #                     limits=c(-10,20),
     #                     breaks=seq(-10,20,2.5)) +
     scale_x_discrete(name="",breaks=NULL) +
-    scale_fill_brewer(palette="Set1") +
-    scale_colour_brewer(palette="Set1") +
-    theme(legend.position="none")
+    scale_fill_brewer(palette="Set2") +
+    scale_colour_brewer(palette="Set2") +
+    theme(legend.position="none",
+          text=element_text(family=font))
 #    ggtitle(lang)
   return(plt)
   }
@@ -562,16 +547,13 @@ interaction.plot <- function(lang.interaction.terms, lang) {
 
 ```{r,fig.width=10,fig.height=5}
 #quartz(width=10, height=5)
-#cairo_pdf("~/Documents/english.pdf", family="DejaVu Sans", width=10, height=5)
 interaction.plot(english.interaction.terms, "English")
 ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/english_interactions.png"), width=10, height=5)
 ```
 
 ```{r,fig.width=10,fig.height=5}
-quartz(width=10, height=5)
-#cairo_pdf("~/Documents/spanish.pdf", family="DejaVu Sans", width=10, height=5)
+#quartz(width=10, height=5)
 interaction.plot(spanish.interaction.terms, "Spanish") #%>%
-#dev.off()
 ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/spanish_interactions.png"), width=10, height=5)
 ```
 
@@ -670,6 +652,168 @@ summary.vocab.comp <- rbind_list(vocab.comp.english,vocab.comp.spanish,
 summary.vocab.comp <- left_join(ms, summary.vocab.comp)
 ```
 
+Compute vocabulary composition data as a proportion of items on the CDI.
+```{r}
+prop.comp <- left_join(filter(summary.vocab.comp, lexical_category != "Other"),
+                        lang.vocab.comp) %>%
+  mutate(cdi.prop = cat / num.per.cat) %>%
+  select(-prop, -prop.per.cat, -n, -num.per.cat)
+prop.comp$language <- factor(prop.comp$language, levels = c("Norwegian", "English",
+                                                            "Danish", "Spanish"))
+```
+
+Plot vocabulary composition by language.
+```{r, fig.width=10, fig.height=8}
+quartz(width=10, height=2.9)
+ggplot(filter(prop.comp, lexical_category != "Other"),
+       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, label=lexical_category)) +
+  geom_jitter(alpha=0.15, size=.75) +
+  facet_wrap(~ language, nrow = 1, ncol = 4,) +
+#  geom_smooth(aes(group=lexical_category), method='loess', span=0.5, size=0.65) +
+  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                     name = "Proportion of CDI Category") +
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
+                     name = "Vocabulary Size") +
+  theme_bw(base_size=12) + 
+  scale_color_brewer(palette = "Set2", name = "Lexical Category") +
+  theme(legend.position = c(0.055,0.82),
+        legend.text = element_text(size=7),
+        legend.title = element_text(size=8),
+        legend.key.height = unit(0.9, "char"),
+        legend.key.width = unit(0.3, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill="transparent"),
+        text = element_text(family=font))
+#ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/composition.png"), width=10, height=2.9, dpi=300)
+```
+
+Re-compute vocab composition in terms of nouns and verbs.
+```{r}
+get.pos <- function(lex_cat, cat) {
+  if(lex_cat == "nouns"){
+    return("nouns")
+    } else if (cat == "action_words"){
+      return("verbs")
+      } else {
+        return("other")
+        }
+  }
+
+noun.verb.comp <- function(lang.data,lang) {  
+    
+  lang.data <- lang.data %>%
+    rowwise() %>%
+    mutate(pos = get.pos(lexical_category, category))
+  
+  d.vocab <- language.vocab.sizes(lang.data)
+  
+  d.pos <- lang.data %>%
+    filter(type == "word") %>%
+    group_by(id, pos) %>%
+    summarise(pos.size = sum(value == "produces", na.rm=TRUE))
+  
+  d.vocab.comp <- left_join(d.vocab, d.pos)
+  d.vocab.comp$language = lang
+  
+  return(d.vocab.comp)
+  }
+
+# get data for kids in each language
+noun.verb.english <- noun.verb.comp(d.english,"English")
+noun.verb.spanish <- noun.verb.comp(d.spanish,"Spanish")
+noun.verb.norwegian <- noun.verb.comp(d.norwegian,"Norwegian")
+noun.verb.danish <- noun.verb.comp(d.danish,"Danish")
+
+# aggregate data for all languages together
+summary.noun.verb <- rbind_list(noun.verb.english, noun.verb.spanish,
+                                 noun.verb.norwegian, noun.verb.danish) %>%
+  mutate(language = factor(language,
+                           levels = c("English", "Spanish", 
+                                      "Norwegian", "Danish")),
+         pos = factor(pos, 
+                      levels = c("nouns", "verbs", "other"),
+                      labels = c("Nouns", "Verbs", "Other")))
+summary.noun.verb <- left_join(ms, summary.noun.verb) %>%
+  filter(pos != "Other")
+
+get.lang.noun.verb <- function(lang.items) {  
+  
+  lang.words <- lang.items %>%
+    filter(form == "WS", type=="word") %>%
+    rowwise() %>%
+    mutate(pos = get.pos(lexical_category, category))
+  
+  lang.noun.verb <- lang.words %>%
+    group_by(language, pos) %>%
+    summarise(num.per.pos = n())
+    
+  return(lang.noun.verb)
+  
+  }
+
+lang.noun.verb <- get.lang.noun.verb(items)
+lang.noun.verb %<>%
+  ungroup() %>%
+  mutate(language = factor(language,
+                           levels = c("English", "Spanish", 
+                                      "Norwegian", "Danish")),
+         pos = factor(pos, 
+                      levels=c("nouns", "verbs", "other"),
+                      labels=c("Nouns", "Verbs", "Other"))) %>%
+  filter(pos != "Other")
+
+prop.noun.verb <- left_join(summary.noun.verb, lang.noun.verb) %>%
+  mutate(pos.prop = pos.size / num.per.pos)
+```
+
+Compute coefficients of noun/verb models.
+```{r}
+prop.mod.coef.fun <- function(pos.prop, vocab.mean, age) {
+#  return(coef(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
+  return(coef(lm(pos.prop ~ I((vocab.mean*100)^2) * age + 0))["I((vocab.mean * 100)^2):age"])
+  }
+
+prop.mod.se.fun <- function(pos.prop, vocab.mean, age) {
+  return(summary(lm(pos.prop ~ I((vocab.mean*100)^2) * age + 0))$coefficients["I((vocab.mean * 100)^2):age", "Std. Error"])
+  }
+
+noun.verb.coefs <- prop.noun.verb %>%
+  group_by(language, pos) %>%
+  summarise(coef = prop.mod.coef.fun(pos.prop, vocab.mean, age),
+            se = prop.mod.se.fun(pos.prop, vocab.mean, age))
+noun.verb.coefs$language <- factor(noun.verb.coefs$language, levels = c("Norwegian",
+                                                                        "English",
+                                                                        "Danish",
+                                                                        "Spanish"))
+```
+
+Plot noun/verb coefficients.
+```{r}
+quartz(width=6, height=4)
+ggplot(noun.verb.coefs, 
+       aes(x=language, y=coef, fill=pos)) + 
+  geom_bar(position="dodge", stat="identity") + 
+  geom_linerange(aes(ymin=coef-se, ymax=coef+se), 
+                 position = position_dodge(width=.9)) +
+  ylab("Age interaction coefficient") + 
+  xlab("Language") +
+  theme_bw(base_size = 14) +
+  scale_fill_brewer(palette = "Set2",
+                    name = "") +
+  theme(legend.position = c(0.07,0.95),
+        legend.text = element_text(size=10),
+        legend.key.height = unit(0.9, "char"),
+        legend.key.width = unit(0.4, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill="transparent"),
+        text = element_text(family=font))
+#ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_noun_verb.png"), width=6, height=4)
+```
+
+
+
+### Extra analyses/plots that are not in the paper
+
 Plot vocabulary composition by language.
 ```{r, fig.width=10, fig.height=8}
 ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
@@ -685,12 +829,13 @@ ggplot(filter(summary.vocab.comp,lexical_category != "Other"),
   scale_x_continuous(name = "Vocabulary Size") +
   geom_dl(aes(label=lexical_category), method=list("smart.grid")) +
   theme_bw(base_size=14) + 
-  scale_color_brewer(palette = "Set1") +
-  scale_fill_brewer(palette = "Set1")+
+  scale_color_brewer(palette = "Spectral") +
+  scale_fill_brewer(palette = "Spectral")+
   theme(axis.text.x = element_text(angle=-40, hjust = 0),
         axis.title.y = element_text(vjust=0.35),
         axis.title.x = element_text(vjust=-0.5),
-        legend.position="none")
+        legend.position="none",
+        text = element_text(family=font))
 ```
 
 Plot vocabulary composition by language and age group.
@@ -763,14 +908,6 @@ ggplot(filter(summary.vocab.comp, lexical_category != "Other"),
         axis.title.x = element_text(vjust=-0.5),
         legend.position="none")
 #ggsave(file=("age_composition.pdf"), width=8, height=6)
-```
-
-Re-compute vocabulary composition data as a proportion of items on the CDI rather than a proportion of vocabulary size.
-```{r}
-prop.comp <- left_join(filter(summary.vocab.comp, lexical_category != "Other"),
-                        lang.vocab.comp) %>%
-  mutate(cdi.prop = cat / num.per.cat) %>%
-  select(-prop, -prop.per.cat, -n, -num.per.cat)
 ```
 
 Use Age and Lexical Category Score to predict Morphology and Syntax Scores, for each lexical category.
@@ -889,31 +1026,6 @@ ggplot(comp.all,
 #ggsave(file=("composition_model_age_points.png"), width=10, height=6)
 ```
 
-Plot new vocabulary composition by language.
-```{r, fig.width=10, fig.height=8}
-quartz(width=10, height=2.9)
-ggplot(filter(prop.comp, lexical_category != "Other"),
-       aes(x=vocab.mean, y=cdi.prop, colour=lexical_category, label=lexical_category)) +
-  geom_jitter(alpha=0.17, size=0.75) +
-  facet_wrap(~ language, nrow = 1, ncol = 4,) +
-  geom_smooth(aes(group=lexical_category), method='loess', span=0.5) +
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
-                     name = "Proportion of CDI Category") +
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
-                     name = "Vocabulary Size") +
-  theme_bw(base_size=12) + 
-  scale_color_brewer(palette = "Set1", name = "Lexical Category") +
-  theme(legend.position = c(0.055,0.82),
-        legend.text = element_text(size=7),
-        legend.title = element_text(size=8),
-        legend.key.height = unit(0.9, "char"),
-        legend.key.width = unit(0.3, "cm"),
-        legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"))
-#ggsave(file=("composition.pdf"), width=8, height=6)
-ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/composition.png"), width=10, height=2.9, dpi=300)
-```
-
 Compute (vocab x age) interaction coefficients for each lexical category and language.
 ```{r}
 quad.mod.coef.fun <- function(cdi.prop, vocab.mean, age) {
@@ -985,85 +1097,7 @@ ggplot(comp.coefs,
 #ggsave(file=("coeffs.pdf"), width=6, height=4)
 ```
 
-```{r}
-get.pos <- function(lex_cat, cat) {
-  if(lex_cat == "nouns"){
-    return("nouns")
-    } else if (cat == "action_words"){
-      return("verbs")
-      } else {
-        return("other")
-        }
-  }
-
-noun.verb.comp <- function(lang.data,lang) {  
-    
-  lang.data <- lang.data %>%
-    rowwise() %>%
-    mutate(pos = get.pos(lexical_category, category))
-  
-  d.vocab <- language.vocab.sizes(lang.data)
-  
-  d.pos <- lang.data %>%
-    filter(type == "word") %>%
-    group_by(id, pos) %>%
-    summarise(pos.size = sum(value == "produces", na.rm=TRUE))
-  
-  d.vocab.comp <- left_join(d.vocab, d.pos)
-  d.vocab.comp$language = lang
-  
-  return(d.vocab.comp)
-  }
-
-# get data for kids in each language
-noun.verb.english <- noun.verb.comp(d.english,"English")
-noun.verb.spanish <- noun.verb.comp(d.spanish,"Spanish")
-noun.verb.norwegian <- noun.verb.comp(d.norwegian,"Norwegian")
-noun.verb.danish <- noun.verb.comp(d.danish,"Danish")
-
-# aggregate data for all languages together
-summary.noun.verb <- rbind_list(noun.verb.english, noun.verb.spanish,
-                                 noun.verb.norwegian, noun.verb.danish) %>%
-  mutate(language = factor(language,
-                           levels = c("English", "Spanish", 
-                                      "Norwegian", "Danish")),
-         pos = factor(pos, 
-                      levels = c("nouns", "verbs", "other"),
-                      labels = c("Nouns", "Verbs", "Other")))
-summary.noun.verb <- left_join(ms, summary.noun.verb) %>%
-  filter(pos != "Other")
-
-get.lang.noun.verb <- function(lang.items) {  
-  
-  lang.words <- lang.items %>%
-    filter(form == "WS", type=="word") %>%
-    rowwise() %>%
-    mutate(pos = get.pos(lexical_category, category))
-  
-  lang.noun.verb <- lang.words %>%
-    group_by(language, pos) %>%
-    summarise(num.per.pos = n())
-    
-  return(lang.noun.verb)
-  
-  }
-
-lang.noun.verb <- get.lang.noun.verb(items)
-lang.noun.verb %<>%
-  ungroup() %>%
-  mutate(language = factor(language,
-                           levels = c("English", "Spanish", 
-                                      "Norwegian", "Danish")),
-         pos = factor(pos, 
-                      levels=c("nouns", "verbs", "other"),
-                      labels=c("Nouns", "Verbs", "Other"))) %>%
-  filter(pos != "Other")
-
-prop.noun.verb <- left_join(summary.noun.verb, lang.noun.verb) %>%
-  mutate(pos.prop = pos.size / num.per.pos)
-```
-
-
+Plot noun/verb composition.
 ```{r, fig.width=10, fig.height=8}
 quartz(width=8, height=6)
 ggplot(prop.noun.verb, aes(x=vocab.mean, y=pos.prop, colour=pos, label=pos)) +
@@ -1086,38 +1120,3 @@ ggplot(prop.noun.verb, aes(x=vocab.mean, y=pos.prop, colour=pos, label=pos)) +
 #ggsave(file=("~/Documents/projects/wordbank_nsf/figures/composition.png"), width=8, height=6, dpi=500)
 ```
 
-```{r}
-linear.mod.coef.fun <- function(pos.prop, vocab.mean, age) {
-  return(coef(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
-  }
-
-linear.mod.se.fun <- function(pos.prop, vocab.mean, age) {
-  return(summary(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))$coefficients["I(vocab.mean * 100):age", "Std. Error"])
-  }
-
-noun.verb.coefs <- prop.noun.verb %>%
-  group_by(language, pos) %>%
-  summarise(coef = mod.coef.fun(pos.prop, vocab.mean, age),
-            se = mod.se.fun(pos.prop, vocab.mean, age))
-```
-
-```{r}
-quartz(width=6, height=4)
-ggplot(noun.verb.coefs, 
-       aes(x=language, y=coef, fill=pos)) + 
-  geom_bar(position="dodge", stat="identity") + 
-  geom_linerange(aes(ymin=coef-se, ymax=coef+se), 
-                 position = position_dodge(width=.9)) +
-  ylab("Age interaction coefficient") + 
-  xlab("Language") +
-  theme_bw(base_size = 14) +
-  scale_fill_brewer(palette = "Set1",
-                    name = "") +
-  theme(legend.position = c(0.07,0.95),
-        legend.text = element_text(size=10),
-        legend.key.height = unit(0.9, "char"),
-        legend.key.width = unit(0.4, "cm"),
-        legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"))
-ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_noun_verb.png"), width=6, height=4)
-```
