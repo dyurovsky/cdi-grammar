@@ -1,6 +1,12 @@
-% Developmental Changes in the Relationship Between Grammar and the Lexicon
-% Mika Braginsky, Dan Yurovsky, Virginia Marchman, and Mike Frank
-% `r as.character(format(Sys.Date(), format="%B %d, %Y"))`
+---
+title: "Developmental Changes in the Relationship Between Grammar and the Lexicon"
+author: "Mika Braginsky, Dan Yurovsky, Virginia Marchman, and Mike Frank"
+date: "February 1, 2015"
+output:
+  html_document:
+    highlight: tango
+    theme: spacelab
+---
 
 ```{r setup, include=FALSE}
 library(knitr)
@@ -27,15 +33,18 @@ library(proto)
 library(extrafont)
 #font_import()
 font = "Tahoma"
+library(lme4)
 ```
 
 Load in wordbank data
 ```{r database}
-## OPEN DATABASE CONNECTION ##
+# RECOMPUTE
+
+# open database connection
 wordbank <- src_mysql(dbname="wordbank", host="54.149.39.46",
                       user="wordbank", password="wordbank")
 
-## NOW LOAD TABLES ##
+# load tables
 source.table <- tbl(wordbank, "common_source")
 admin.table <- tbl(wordbank, "common_administration")
 child.table <- tbl(wordbank, "common_child")
@@ -49,37 +58,43 @@ danish.ws.table <- tbl(wordbank, "instruments_danish_ws")
 
 Get kid data and put together. 
 ```{r child_data}
-# Get administration info
+# get administration info
 admins <- admin.table %>%
   select(data_id,child_id,age,source_id) %>%
   rename(id = data_id, child.id = child_id, source.id = source_id) 
 admins <- as.data.frame(admins)
 
-# Get demographic variables for each child
+# get demographic variables for each child
 demos <- select(child.table,id,sex,mom_ed,birth_order) %>%
   rename(child.id = id) # Rename id fields
 demos <- as.data.frame(demos)
 
-# Join age and demographics together
+# join administrations and demographics together
 child.data <- as.tbl(left_join(admins,demos))
 ```
 
 Set up mappings and instruments.
 ```{r item_data}
+# RECOMPUTE
+# get item info
 mapping <- as.data.frame(wordmapping.table)
+
+# get instrument info
 instruments <- as.data.frame(instruments.table) %>%
   rename(instrument_id = id)
+
+# join items and instruments together
 items <- left_join(mapping, instruments)
 ```
 
-Fucntion for getting all of the data in wordbank for a given language (kid x item).
+Function for getting all of the data in wordbank for a given language (kid x item).
 ```{r}
 get.language.data <- function(lang.table, lang.items, lang, child.data) {
   
   instrument.items <- lang.items %>% 
     filter(language == lang, form == 'WS') %>%
-    select(item, type, category, lexical_category, definition) %>%
-    mutate(item = str_replace(item, "\\.", "_")) # Fix _/. inconsistencies
+    select(item, type, category, lexical_category, definition, complexity_category) %>%
+    mutate(item = str_replace(item, "\\.", "_")) # fix _/. inconsistencies
   
   instrument.data <- as.data.frame(lang.table) %>%
     rename(id = basetable_ptr_id) %>% # Rename the id
@@ -93,6 +108,7 @@ get.language.data <- function(lang.table, lang.items, lang, child.data) {
 
 Get (kid x item) data for all languages.
 ```{r}
+# RECOMPUTE
 d.english <- get.language.data(lang.table=english.ws.table, 
                                lang.items=items, 
                                lang="English",
@@ -153,7 +169,6 @@ summarise.language.data <- function(lang.data,lang) {
                                    na.rm=TRUE) / length(value)) %>%
     mutate(complexity = ifelse(all.na,NA,complexity.sum)) %>%
     select(-all.na,-complexity.sum) # Deals with ifelse 
-  # forcing values to logical
   
   d.wordform <- lang.data %>%
     filter(type == "word_form") %>%
@@ -163,31 +178,13 @@ summarise.language.data <- function(lang.data,lang) {
                                  na.rm=TRUE) / length(value)) %>%
     mutate(wordform = ifelse(all.na,NA,wordform.sum)) %>%
     select(-all.na,-wordform.sum) # Deals with ifelse 
-  # forcing values to logical
-  
-  # Spanish doesn't have ending data, so its skipped, at least for now.
-  #   d.ending <- d %>%
-  #     filter(type %in% c("ending")) %>%
-  #     group_by(id) %>%
-  #     summarise(ending_sometimes = mean(value == "sometimes" | 
-  #                                       value == "often", 
-  #                                       na.rm=TRUE), 
-  #               ending_often = mean(value == "often", 
-  #                                   na.rm=TRUE))
-  #  d.composite <- left_join(d.composite, d.ending)
   
   d.composite <- left_join(d.vocab, d.complexity)
   d.composite <- left_join(d.composite, d.wordform) %>%
       ungroup() %>%
       filter(age > 15 & age < 32) %>%
       mutate(age.group = cut(age, breaks = c(15, 19, 23, 27, 31)))
-#             age.bin = cut(age, quantile(age), include.lowest=T))
 
-#  d.composite$age.bin <- factor(d.composite$age.bin, labels=c(1,2,3,4))
-  #   %>%
-  #     filter(num.complexity.na == 0) %>%
-  #     select(-num.complexity.na)
-  #   
   d.composite$language <- lang
   
   return(d.composite)
@@ -224,43 +221,53 @@ Fit a bunch of models to grammar data and do model comparison.
 linear <- formula(score ~ I(vocab.mean*100))
 quadratic <- formula(score ~ I((vocab.mean*100)^2))
 linear.quadratic <- formula(score ~ I((vocab.mean*100)^2) + I(vocab.mean*100))
-quadratic.age <- formula(score ~ I((vocab.mean*100)^2) * age)
-quadratic.age.noint <- formula(score ~ I((vocab.mean*100)^2) * age + 0)
-grammar.formulas <- c(linear, quadratic, linear.quadratic, quadratic.age, quadratic.age.noint)
+linear.quadratic.age <- formula(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100))
+linear.quadratic.age.noint <- formula(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) + 0)
+grammar.formulas <- c(linear, quadratic, linear.quadratic,
+                      linear.quadratic.age, linear.quadratic.age.noint)
 
 grammar.models <- ms %>%
   group_by(language, measure) %>%
   do(linear = lm(grammar.formulas[[1]], .),
      quadratic = lm(grammar.formulas[[2]], .),
      linear.quadratic = lm(grammar.formulas[[3]], .),
-     quadratic.age = lm(grammar.formulas[[4]], .),
-     quadratic.age.noint = lm(grammar.formulas[[5]], .)) %>%
+     linear.quadratic.age = lm(grammar.formulas[[4]], .),
+     linear.quadratic.age.noint = lm(grammar.formulas[[5]], .)) %>%
   mutate(linear_rsq = summary(linear)$adj.r.squared,
          quadratic_rsq = summary(quadratic)$adj.r.squared,
          linear.quadratic_rsq = summary(linear.quadratic)$adj.r.squared,
-         quadratic.age_rsq = summary(quadratic.age)$adj.r.squared,
-         quadratic.age.noint_rsq = summary(quadratic.age.noint)$adj.r.squared)
+         linear.quadratic.age_rsq = summary(linear.quadratic.age)$adj.r.squared,
+         linear.quadratic.age.noint_rsq = summary(linear.quadratic.age.noint)$adj.r.squared)
 
 grammar.anovas <- grammar.models %>%
-  do(linear_quadratic_anova = anova(.$linear, .$quadratic),
-     quadratic_linear.quadratic_anova = anova(.$quadratic, .$linear.quadratic),
-     linear.quadratic_quadratic.age_anova = anova(.$linear.quadratic, .$quadratic.age),
-     quadratic.age_quadratic.age.noint_anova = anova(.$quadratic.age, .$quadratic.age.noint))
+  do(linear_quadratic_anova = anova(.$linear,
+                                    .$quadratic),
+     quadratic_linear.quadratic_anova = anova(.$quadratic,
+                                              .$linear.quadratic),
+     linear.quadratic_linear.quadratic.age_anova = anova(.$linear.quadratic,
+                                                         .$linear.quadratic.age),
+     linear.quadratic.age_linear.quadratic.age.noint_anova = anova(.$linear.quadratic.age,
+                                                                   .$linear.quadratic.age.noint))
 
 grammar.p_values <- grammar.anovas %>%
   do(linear_quadratic_p = .$linear_quadratic_anova$`Pr(>F)`[[2]],
      quadratic_linear.quadratic_p = .$quadratic_linear.quadratic_anova$`Pr(>F)`[[2]],
-     linear.quadratic_quadratic.age_p = .$linear.quadratic_quadratic.age_anova$`Pr(>F)`[[2]],
-     quadratic.age_quadratic.age.noint_p = .$quadratic.age_quadratic.age.noint_anova$`Pr(>F)`[[2]]) %>%
+     linear.quadratic_linear.quadratic.age_p =
+       .$linear.quadratic_linear.quadratic.age_anova$`Pr(>F)`[[2]],
+     linear.quadratic.age_linear.quadratic.age.noint_p =
+       .$linear.quadratic.age_linear.quadratic.age.noint_anova$`Pr(>F)`[[2]]) %>%
   mutate(linear_quadratic_p = log10(linear_quadratic_p[[1]]),
          quadratic_linear.quadratic_p = log10(quadratic_linear.quadratic_p[[1]]),
-         linear.quadratic_quadratic.age_p = log10(linear.quadratic_quadratic.age_p[[1]]),
-         quadratic.age_quadratic.age.noint_p = log10(quadratic.age_quadratic.age.noint_p[[1]]))
+         linear.quadratic_linear.quadratic.age_p =
+           log10(linear.quadratic_linear.quadratic.age_p[[1]]),
+         linear.quadratic.age_linear.quadratic.age.noint_p =
+           log10(linear.quadratic.age_linear.quadratic.age.noint_p[[1]]))
 ```
 
 Show R-squared values of some models.
 ```{r,results = 'asis'}
-display.models <- grammar.models %>% select(language, measure, linear.quadratic_rsq, quadratic.age_rsq, quadratic.age.noint_rsq)
+display.models <- grammar.models %>% select(language, measure, linear.quadratic_rsq,
+                                            linear.quadratic.age_rsq, linear.quadratic.age.noint_rsq)
 kable(display.models)
 ```
 
@@ -269,7 +276,7 @@ Show the log p-values of the anova of successive pairs of models.
 grammar.p_values$language = grammar.models$language
 grammar.p_values$measure = grammar.models$measure
 grammar.p_values <- grammar.p_values[,c(5,6,1:4)]
-display.p_values <- grammar.p_values %>% select(language, measure, linear.quadratic_quadratic.age_p, quadratic.age_quadratic.age.noint_p)
+display.p_values <- grammar.p_values %>% select(language, measure, linear.quadratic_linear.quadratic.age_p, linear.quadratic.age_linear.quadratic.age.noint_p)
 kable(display.p_values)
 ```
 
@@ -281,9 +288,9 @@ predicted.data$predicted.pin <- NA
 
 for (lang in c("English", "Spanish", "Norwegian", "Danish")) {
   for (meas in c("Complexity", "Word Form")) {
-    model <- lm(score ~ I((vocab.mean*100)^2) * age.group,
+    model <- lm(score ~ I((vocab.mean*100)^2) * age.group + I(vocab.mean*100),
                 data=filter(ms,language==lang, measure==meas))
-    pinned.model <- lm(score ~ I((vocab.mean*100)^2) * age.group - age.group + 0,
+    pinned.model <- lm(score ~ I((vocab.mean*100)^2) * age.group + I(vocab.mean*100) - age.group + 0,
                 data=filter(ms,language==lang, measure==meas))
 #    print(anova(model, pinned.model))
     predicted.data[predicted.data$language==lang & predicted.data$measure==meas,]$predicted <- 
@@ -362,21 +369,23 @@ ggplot(predicted.data, aes(x = vocab.mean, y = score,
 Compute (vocab x age) interaction coefficients for each language and measure.
 ```{r}
 mod.coef.fun <- function(score, vocab.mean, age) {
-#  return(coef(lm(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) * age - age + 0))[2])
-#  return(coef(lm(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) * age + 0))[])
-  return(coef(lm(score ~ I((vocab.mean * 100)^2) * age + 0))["I((vocab.mean * 100)^2):age"])
+  return(coef(lm(score ~ I((vocab.mean * 100)^2) * age + I(vocab.mean * 100) + 0))["I((vocab.mean * 100)^2):age"])
+  }
+
+mod.rsq.fun <- function(score, vocab.mean, age) {
+  return(summary(lm(score ~ I((vocab.mean * 100)^2) * age + I(vocab.mean * 100) + 0))$adj.r.squared)
   }
 
 mod.se.fun <- function(score, vocab.mean, age) {
-#  return(summary(lm(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) * age - age + 0))$coefficients[2,2])
-  return(summary(lm(score ~ I((vocab.mean*100)^2) * age + 0))$coefficients["I((vocab.mean * 100)^2):age",
+  return(summary(lm(score ~ I((vocab.mean*100)^2) * age + I(vocab.mean * 100) + 0))$coefficients["I((vocab.mean * 100)^2):age",
                                                                            "Std. Error"])
   }
 
 grammar.coefs <- ms %>% 
   group_by(language, measure) %>%
-  summarise(coef = mod.coef.fun(score,vocab.mean,age),
-            se = mod.se.fun(score,vocab.mean,age))
+  summarise(coef = mod.coef.fun(score, vocab.mean, age),
+            se = mod.se.fun(score,vocab.mean,age),
+            rsq = mod.rsq.fun(score,vocab.mean,age))
 grammar.coefs$language = factor(grammar.coefs$language, levels=c("Norwegian", "English",
                                                                  "Danish", "Spanish"))
 ```
@@ -387,6 +396,9 @@ Plot age interaction coefficients for each language and measure.
 ggplot(grammar.coefs, 
        aes(x=language, y=coef, fill=measure)) + 
   geom_bar(position="dodge", stat="identity") + 
+  geom_text(aes(label=paste(expression("italic(r)^2=="),round(rsq,2)), y=1.5e-7),
+            position = position_dodge(width=0.9),
+            size = 2.5, parse = TRUE, family=font) +
   geom_linerange(aes(ymin=coef-se, ymax=coef+se), 
                  position = position_dodge(width=.9)) +
   ylab("Age interaction coefficient") + 
@@ -394,19 +406,27 @@ ggplot(grammar.coefs,
   theme_bw(base_size = 14) +
   scale_fill_brewer(palette="Set2",
                     name="") +
-  theme(text=element_text(family=font),
-        legend.position = c(0.12,0.95),
+  theme(legend.position = c(0.12,0.95),
         legend.text = element_text(size=10),
-        legend.key.height = unit(0.9, "char"),
+        legend.key.height = unit(1, "char"),
         legend.key.width = unit(0.4, "cm"),
         legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"))
+        legend.background = element_rect(fill="transparent"),
+        text=element_text(family=font))
 #ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_wordform_complexity.png"), width=6, height=4, dpi=300)
 ```
 
 Get (kid x item x {vocab size, value}) data for wordform and complexity items.
 ```{r}
-grammar.by.item <- function(lang.data, lang) {
+get.item.type <- function(type, complexity_category) {
+  if(type == "complexity") {
+    return(complexity_category)
+  } else {
+    return(type)
+  }
+}
+
+grammar.by.item <- function(lang.data) {
   
   d.vocab <- language.vocab.sizes(lang.data)
   
@@ -420,91 +440,73 @@ grammar.by.item <- function(lang.data, lang) {
     mutate(value = value == "produces") %>%
     select(-lexical_category, -category)
   
-  d.data <- rbind(d.complexity, d.wordform)
-  d.data <- left_join(d.vocab, d.data) %>%
-    filter(age > 15, age < 33)
+  d.data <- rbind(d.complexity, d.wordform) %>%
+    rowwise() %>%
+    mutate(coded.type = get.item.type(type, complexity_category)) %>%
+    select(-complexity_category)
   
+  d.data <- left_join(d.vocab, d.data) %>%
+    filter(age > 15, age < 32)
+    
   return(d.data)
   }
 
-english.grammar.by.item <- grammar.by.item(d.english,"English")
-spanish.grammar.by.item <- grammar.by.item(d.spanish,"Spanish")
-norwegian.grammar.by.item <- grammar.by.item(d.norwegian,"Norwegian")
-danish.grammar.by.item <- grammar.by.item(d.danish,"Danish")
+english.grammar.by.item <- grammar.by.item(d.english)
+spanish.grammar.by.item <- grammar.by.item(d.spanish)
+norwegian.grammar.by.item <- grammar.by.item(d.norwegian)
+danish.grammar.by.item <- grammar.by.item(d.danish)
 ```
 
 Compute (vocab x age) interaction terms for each wordform and complexity item.
 ```{r,fig.height=5,fig.width=8}
 #compute interaction terms each item
-i.terms.function <- function(data,x) {
-  return(coef(lm(value ~ I((vocab.mean*100)^2) * age + 0,
-              data=filter(data,definition==x)))["I((vocab.mean * 100)^2):age"])
-#  return(summary(lm(value ~ I((vocab.mean*100)^2) * age + 0, 
-#                    data=filter(data,definition==x))$coefficients[3,3])
+i.coef.function <- function(data, item.definition) {
+  return(coef(lm(value ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) + 0,
+              data=filter(data, definition==item.definition)))["I((vocab.mean * 100)^2):age"][[1]])
   }
 
-# complexity.diff <- function(item) {
-#   
-#   if(length(grep("/", item)) == 0) {return(item)}
-#   else{
-#     phrases <- str_split(item," / ")[[1]]
-#     first.phrase <- str_split(phrases[1], " ")[[1]]
-#     second.phrase <- str_split(phrases[2], " ")[[1]]
-#   
-#     first.diff <- setdiff(first.phrase,second.phrase)
-#     second.diff <- setdiff(second.phrase,first.phrase)
-#   
-#     if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
-#     else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
-#     else{first.phrase = paste(first.diff, collapse =" ")
-#          second.phrase = paste(second.diff,collapse = " ")
-#          return(paste(first.phrase, second.phrase ,sep=" / "))}
-#     }
-#   }
-
- complexity.diff <- function(item) {
-   return(item)
-   }
-
-lang.interaction.terms<- function(grammar.by.item) {
-  
-  complexity.terms <- sapply(unique(filter(grammar.by.item,
-                                           type=="complexity")$definition), 
-                             function(item) i.terms.function(grammar.by.item,
-                                                             item))
-  
-  complexity.terms <- data.frame(type = "complexity",
-                                 definition=names(complexity.terms),
-#                                 item=1:length(complexity.terms),
-                                 term = complexity.terms,
-                                 row.names=NULL) %>%
-    mutate(definition = sapply(definition,complexity.diff),
-           item = definition) %>%
-#           item = paste(item,definition,sep=". ")) %>%
-    select(-definition)
-  
-  wordform.terms <- sapply(unique(filter(grammar.by.item,
-                                         type=="word_form")$definition), 
-                           function(item) i.terms.function(grammar.by.item,
-                                                           item))
-  
-  wordform.terms <- data.frame(type = "wordform",
-                               item=names(wordform.terms),
-                               term = wordform.terms,
-                               row.names=NULL)
-  
-  #rename results to be human-readable
-  interaction.terms <- rbind(complexity.terms, wordform.terms) %>%
-    arrange(term) %>%
-    mutate(item = factor(item,levels=item))
-  
-  return(interaction.terms)
+i.se.function <- function(data, item.definition) {
+  return(summary(lm(value ~ I((vocab.mean*100)^2) * age + I(vocab.mean*100) + 0,
+                    data=filter(data, definition==item.definition)))$coefficients["I((vocab.mean * 100)^2):age", "Std. Error"])
   }
 
-#spanish.grammar.by.item$definition <- spanish.grammar.by.item$item
-#norwegian.grammar.by.item$definition <- norwegian.grammar.by.item$item
-#danish.grammar.by.item$definition <- danish.grammar.by.item$item
-
+lang.interaction.terms <- function(grammar.by.item) {
+  
+  ctype.interaction.terms <- function(ctype) {
+    
+    if(ctype %in% grammar.by.item$coded.type) {
+      
+      ctype.data <- filter(grammar.by.item, coded.type==ctype)
+      ctype.coef <- sapply(unique(ctype.data$definition),
+                            function(definition) i.coef.function(ctype.data, definition))
+      ctype.se <- sapply(unique(ctype.data$definition),
+                            function(definition) i.se.function(ctype.data, definition))
+      
+      ctype.terms <- data.frame(coded.type = ctype,
+                                definition = names(ctype.coef),
+                                coef = ctype.coef,
+                                se = ctype.se,
+                                row.names=NULL) %>%
+        rename(item = definition)
+      ctype.terms$coded.type <- factor(ctype.terms$coded.type, levels = c("word_form", "morphology", "syntax"),
+                                       labels = c("Word Form", "Complexity (Morphological)", "Complexity (Syntactic)"))
+      
+      return(ctype.terms)
+      }
+    }
+  
+  wordform.terms <- ctype.interaction.terms("word_form")
+  morphology.terms <- ctype.interaction.terms("morphology")
+  syntax.terms <- ctype.interaction.terms("syntax")
+  
+  lang.terms <- rbind_list(wordform.terms, morphology.terms, syntax.terms) %>%
+    arrange(coef) %>%
+    mutate(item = factor(item, levels=item))    
+  
+  return(lang.terms)
+  
+  }
+  
 english.interaction.terms <- lang.interaction.terms(english.grammar.by.item)
 spanish.interaction.terms <- lang.interaction.terms(spanish.grammar.by.item)
 norwegian.interaction.terms <- lang.interaction.terms(norwegian.grammar.by.item)
@@ -513,21 +515,24 @@ danish.interaction.terms <-  lang.interaction.terms(danish.grammar.by.item)
 
 Function for plotting interaction terms by item for a language.
 ```{r}
-interaction.plot <- function(lang.interaction.terms, lang) {
+interaction.plot <- function(lang.interaction.terms, language) {
   plt <- ggplot(lang.interaction.terms,
-                aes(x=item,y=term,fill=type,label=item)) +
-    geom_bar(stat="identity", position="identity", alpha=.5) +
-    geom_text(y=0.15, angle=90, hjust=0, size=3.3, parse=F) +
+                aes(x=item, y=coef, fill=coded.type, label=item)) +
+    geom_bar(stat="identity", position="identity", alpha=.5, width=0.9) +
+    #    geom_text(y=0.15, angle=90, hjust=0, size=3.3, parse=F) +
+    geom_linerange(aes(ymin=coef-se, ymax=coef+se),
+                   position = position_dodge(width=.9)) +
     theme_bw(base_size = 12) +
     scale_y_continuous(name="Age Interaction Coefficient") +
-    #                     limits=c(-10,20),
-    #                     breaks=seq(-10,20,2.5)) +
     scale_x_discrete(name="",breaks=NULL) +
-    scale_fill_brewer(palette="Set2") +
-    scale_colour_brewer(palette="Set2") +
-    theme(legend.position="none",
-          text=element_text(family=font))
-#    ggtitle(lang)
+    annotate("text", x = length(lang.interaction.terms$item)/2, y = -1.3e-6,
+             label = language, size = 9, family=font) +
+    scale_fill_brewer(palette="Set2", name="Item Type") +
+    theme(legend.position = c(0.15,0.85),
+          legend.text = element_text(size=12),
+          legend.title = element_text(size=12),
+          legend.key = element_blank(),
+          text = element_text(family=font))
   return(plt)
   }
 ```
@@ -548,12 +553,14 @@ interaction.plot(spanish.interaction.terms, "Spanish") #%>%
 
 Plot item interactions for Norwegian.
 ```{r,fig.width=10,fig.height=5}
+#quartz(width=10, height=5)
 interaction.plot(norwegian.interaction.terms, "Norwegian") #%>%
 #ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/norwegian_interactions.png"), width=10, height=5)
 ```
 
 Plot item interactions for Danish.
 ```{r,fig.width=10,fig.height=5}
+#quartz(width=10, height=5)
 interaction.plot(danish.interaction.terms, "Danish") #$>$
 #ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/danish_interactions.png"), width=10, height=5)
 ```  
@@ -759,18 +766,28 @@ prop.noun.verb <- left_join(summary.noun.verb, lang.noun.verb) %>%
 
 Compute coefficients of noun/verb models.
 ```{r}
+#TODO: model comparison
 prop.mod.coef.fun <- function(pos.prop, vocab.mean, age) {
 #  return(coef(lm(pos.prop ~ I((vocab.mean*100)^2) + I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
-  return(coef(lm(pos.prop ~ I(vocab.mean*100) * age + 0))["I(vocab.mean * 100):age"])
+  return(coef(glm(pos.prop ~ I(vocab.mean*100) * age + 0,
+                  family="binomial"))["I(vocab.mean * 100):age"])
   }
+
+# prop.mod.rsq.fun <- function(pos.prop, vocab.mean, age) {
+#   return(summary(glm(pos.prop ~ I(vocab.mean*100) * age + 0,
+#                   family="binomial"))$adj.r.squared)
+#   }
 
 prop.mod.se.fun <- function(pos.prop, vocab.mean, age) {
-  return(summary(lm(pos.prop ~ I(vocab.mean*100) * age + 0))$coefficients["I(vocab.mean * 100):age", "Std. Error"])
+  return(summary(glm(pos.prop ~ I(vocab.mean*100) * age + 0,
+                     family="binomial"))$coefficients["I(vocab.mean * 100):age", "Std. Error"])
   }
 
+#TODO: what metric to use instead of r-squared?
 noun.verb.coefs <- prop.noun.verb %>%
   group_by(language, pos) %>%
   summarise(coef = prop.mod.coef.fun(pos.prop, vocab.mean, age),
+#            rsq = prop.mod.rsq.fun(pos.prop, vocab.mean, age),
             se = prop.mod.se.fun(pos.prop, vocab.mean, age))
 noun.verb.coefs$language <- factor(noun.verb.coefs$language, levels = c("Norwegian",
                                                                         "English",
@@ -784,6 +801,9 @@ Plot noun/verb coefficients.
 ggplot(noun.verb.coefs, 
        aes(x=language, y=coef, fill=pos)) + 
   geom_bar(position="dodge", stat="identity") + 
+#  geom_text(aes(label=paste(expression("R^2=="),round(rsq,2)), y=1.5e-7),
+#            position = position_dodge(width=0.9),
+#            size = 2.5, parse = TRUE) +
   geom_linerange(aes(ymin=coef-se, ymax=coef+se), 
                  position = position_dodge(width=.9)) +
   ylab("Age interaction coefficient") + 
@@ -801,7 +821,26 @@ ggplot(noun.verb.coefs,
 #ggsave(file=("~/Documents/projects/cdi-grammar/cogsci_paper/plots/coefs_noun_verb.png"), width=6, height=4)
 ```
 
+Fit mixed-effects models of kid-word production.
+```{r}
+# d.vocab <- language.vocab.sizes(d.english)
+# d.english.vocab <- left_join(d.english, d.vocab) %>%
+#   filter(age >= 16, age <= 30) %>%
+#   rowwise() %>%
+#   mutate(pos = get.pos(lexical_category, category)) %>%
+#   filter(pos != "other") %>%
+#   mutate(produces = value=="produces")
 
+#TODO: models that converge
+# big.lm.nouns <- glmer(produces ~ I(vocab.mean*100)*age + 0 + (1|id) + (1|item),
+#                       family="binomial",
+#                       data=filter(d.english.vocab,pos=="nouns"))
+# animal.lm <- glmer(produces ~ I(vocab.mean*100)*age + 0 + (1|item), family="binomial",
+#                    data=filter(d.english.vocab,pos=="nouns",category=="animals"))
+# 
+# big.lm.verbs <- glmer(produces ~ I(vocab.mean*100)*age + 0 + (1|id) + (1|item), family="binomial",
+#                       data=filter(d.english.vocab,pos=="verbs"))
+```
 ***
 
 ## Extra analyses/plots that are not in the paper
@@ -1132,3 +1171,23 @@ Plot noun/verb composition.
 #ggsave(file=("~/Documents/projects/wordbank_nsf/figures/composition.png"), width=8, height=6, dpi=500)
 ```
 
+```{r}
+# complexity.diff <- function(item) {
+#   
+#   if(length(grep("/", item)) == 0) {return(item)}
+#   else{
+#     phrases <- str_split(item," / ")[[1]]
+#     first.phrase <- str_split(phrases[1], " ")[[1]]
+#     second.phrase <- str_split(phrases[2], " ")[[1]]
+#   
+#     first.diff <- setdiff(first.phrase,second.phrase)
+#     second.diff <- setdiff(second.phrase,first.phrase)
+#   
+#     if(length(first.diff)==0) return(paste(second.diff,collapse=" ")) 
+#     else if(length(second.diff)==0) return(paste(first.diff,collapse=" "))
+#     else{first.phrase = paste(first.diff, collapse =" ")
+#          second.phrase = paste(second.diff,collapse = " ")
+#          return(paste(first.phrase, second.phrase ,sep=" / "))}
+#     }
+#   }
+```
