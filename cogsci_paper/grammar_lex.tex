@@ -14,14 +14,9 @@
  \usepackage[section]{placeins}
  \usepackage[font=small,skip=0pt]{caption}
 % \usepackage{stfloats}
-
-% \setcounter{topnumber}{2}
-% \setcounter{bottomnumber}{2}
-% \setcounter{totalnumber}{4}
-% \renewcommand{\topfraction}{0.85}
-% \renewcommand{\bottomfraction}{0.85}
-% \renewcommand{\textfraction}{0.15}
-% \renewcommand{\floatpagefraction}{0.7}
+%\setlength{\parskip}{0pt}
+%\setlength{\textfloatsep}{\baselineskip plus 0.2\baselineskip minus 0.2\baselineskip}
+\setlength{\textfloatsep}{\baselineskip}
 
 \title{Developmental Changes in the Relationship Between Grammar and the Lexicon}
 % \title{Developmental Change in the Relationship Between Lexical and Grammatical Acquisition}
@@ -62,7 +57,7 @@ A child as young as 2 or 3 years old (who happens to be acquiring English) can h
 
 On lexicalist theories, morphosyntactic structure emerges from graded generalizations on the basis of lexical items and there may be little or no representation of morphosyntactic rules or regularities \emph{per se}, at least early in development \cite{tomasello2003}. Even if syntactic structures are eventually represented, representations should be directly related to their support in more concrete lexical structure \cite{bannard2009}. In contrast, on more nativist theories like principles and parameters \cite{chomsky1981, baker2005}, grammar emerges independently from lexical knowledge following its own (largely maturational) timetable. On these theories, older children should have more grammatical competence than younger children, and this growth in competence should be driven by factors that are independent of the amount of language input they receive and hence the size of their vocabulary.
 
-Developmental data that explore relations between lexicon, grammar and age are critical to resolving issues related to this fundamental theoretical debate. Early efforts utilized data from the MacArthur-Bates Communicative Development Inventory (CDI), a widely-used parent report instrument that asks parents to mark which words their child produces on a checklist organized in lexical-semantic categories. Children's vocabulary size can thus be estimated over the entire checklist, or for sub-sections (e.g., nouns vs. verbs). The CDI also provides indices of grammar learning by asking about children's use of inflected forms (e.g., \emph{walked}) and the complexity of their word combinations (e.g., \emph{kitty is sleeping}; \citeNP{bates1997,caselli1999}). Influential findings were that early vocabularies tend to be composed primarily of nouns, with children only later learning verbs or closed-class forms that might support the transition into complex sentences \cite{bates1994}. Further, across different populations and languages, global estimates of progress in grammar were more strongly predicted by overall vocabulary size than by age, providing support for lexicalist theories, see \cite{bates1999} for review. 
+Developmental data that explore relations between lexicon, grammar and age are critical to resolving issues related to this fundamental theoretical debate. Early efforts utilized data from the MacArthur-Bates Communicative Development Inventory (CDI), a widely-used parent report instrument that asks parents to mark which words their child produces on a checklist organized in lexical-semantic categories. Children's vocabulary size can thus be estimated over the entire checklist, or for sub-categories. The CDI also provides indices of grammar learning by asking about children's use of inflected forms (e.g., \emph{walked}) and the complexity of their word combinations (e.g., \emph{kitty is sleeping}; \citeNP{bates1997,caselli1999}). Influential findings were that early vocabularies tend to be composed primarily of nouns, with children only later learning verbs or closed-class forms that might support the transition into complex sentences \cite{bates1994}. Further, across different populations and languages, global estimates of progress in grammar were more strongly predicted by overall vocabulary size than by age, providing support for lexicalist theories, see \cite{bates1999} for review. 
 
 % Do we need to bring in the syntactic bootstrapping hypothesis at this point?
 
@@ -81,7 +76,7 @@ We begin by describing the Wordbank database, the CDI measures, and our general 
 
 \section{Analyses}
 
-\subsection{Method}
+\subsection{Methods}
 
 \subsubsection{CDI Form Database}
 
@@ -107,7 +102,7 @@ Total & 19822 & 15810 \\
 
 \subsubsection{CDI Measures}
 
-In all four languages, the CDIs contain both vocabulary checklists and other questions relevant to the child's linguistic development. All of the data reported here come from the Words \& Sentences form, administered to children ages 16--32 months. Each of these instruments includes a vocabulary section, which asks whether the child produces each of around 700 words from a variety of semantic and syntactic categories (e.g., \emph{foot}, \emph{run}, \emph{so}); a word form section, which asks whether the child produces each of around 30 morphologically inflected forms of nouns and verbs (e.g., \emph{feet}, \emph{ran}); and a complexity section, which asks whether the child's speech is most similar to the syntactically simpler or more complex versions of around 40 sentences (e.g., \emph{two foot} vs. \emph{two feet}, \emph{there a kitty} vs. \emph{there's a kitty}). Each language's instrument is not merely a translation of the English Words \& Sentences form, but rather was constructed and normed specifically to reflect the lexicon and grammar of that language. Table \ref{table:measures} shows, for each language, the number of items in each of these sections.
+In all four languages, the CDIs contain both vocabulary checklists and other questions relevant to the child's linguistic development. All of the data reported here come from the Words \& Sentences form, administered to children ages 16--32 months. Each of these instruments includes a vocabulary section, which asks whether the child produces each of around 700 words from a variety of semantic and syntactic categories (e.g., \emph{foot}, \emph{run}, \emph{so}); a word form section, which asks whether the child produces each of around 30 morphologically inflected forms of nouns and verbs (e.g., \emph{feet}, \emph{ran}); and a complexity section, which asks whether the child's speech is most similar to the syntactically simpler or more complex versions of around 40 sentences (e.g., \emph{two foot / two feet}, \emph{there a kitty / there's a kitty}). Each language's instrument is not just a translation of the English form, but rather was constructed and normed to reflect the lexicon and grammar of that language. Table \ref{table:measures} shows, for each language, the number of items in each of these sections.
 
 \begin{table}
 \begin{center}
@@ -131,11 +126,11 @@ To analyze lexical and grammatical development, we derive several measures. Each
 
 \begin{figure*}[t!]
 \centering
-\includegraphics[width=.75\textwidth]{plots/grammar.png}
+\includegraphics[width=.72\textwidth]{plots/grammar.png}
 \caption{\label{fig:grammar} Each point shows an individual child, indicating their total vocabulary size and word form score or complexity score, with color showing their age bin (English $n=4137$; Spanish $n=1094$; Norwegian $n=8505$; Danish $n=2074$). Panels show different languages, and curves are logistic regression models fit separately for each language and measure. The models were specified as \small{\tt{score $\sim$ vocab + age}}.} 
 \end{figure*}
 
-By two years, most children have a sizable working vocabulary, including verbs, prepositions and closed class forms that perform grammatical work. They are also beginning to use two- or three-word combinations (e.g., ``mommy sock'') and may demonstrate productive use of inflectional morphemes (e.g., past tense ``-ed''). Previous studies have found a strong connection between the size of the lexicon and grammatical development, as measured by the complexity section, in a variety of languages, including English, Italian, Hebrew, and Spanish \cite<see>{bates1999}. However, no studies have had the power and cross-linguistic representation to go beyond this initial finding. We extend it by examining grammatical development using two different measures: the word forms checklist as a window into morphology and the complexity checklist as a window into syntax. For each measure, we investigate the effects of vocabulary size and age in a variety of languages.
+By two years, most children have a sizable working vocabulary, including verbs, prepositions, and closed class forms that perform grammatical work. They are also beginning to use multi-word combinations (e.g., \emph{mommy sock}) and may demonstrate productive use of inflectional morphemes (e.g., past tense \emph{-ed}). Previous studies have found a strong connection between the size of the lexicon and grammatical development as measured by the complexity section, in many languages including English, Italian, Hebrew, and Spanish \cite<see>{bates1999}. However, no studies have had the power and cross-linguistic representation to go beyond this initial finding. We extend it by examining grammatical development using two measures: the word forms checklist as a window into morphology and the complexity checklist as a window into syntax. For each measure, we investigate the effects of vocabulary size and age in a variety of languages.
 
 %This suggests that the mechanisms guiding vocabulary and grammar learning are highly interdependent \cite{tomasello2003,bresnan2001}, a view at odds with the nativist assumption that grammar emerges independent of the lexicon \cite{chomsky1981}.
 
@@ -156,20 +151,22 @@ For all languages, the curves for Word Form are near overlapping, showing little
 
 \begin{figure*}
 \centering
-\includegraphics[width=.49\textwidth]{plots/norwegian_interactions}
-\includegraphics[width=.49\textwidth]{plots/english_interactions}\\
-\includegraphics[width=.49\textwidth]{plots/danish_interactions}
-\includegraphics[width=.49\textwidth]{plots/spanish_interactions} 
+\includegraphics[width=.45\textwidth]{plots/norwegian_interactions}
+\includegraphics[width=.45\textwidth]{plots/english_interactions}\\
+\includegraphics[width=.45\textwidth]{plots/danish_interactions}
+\includegraphics[width=.45\textwidth]{plots/spanish_interactions} 
 \caption{\label{fig:interactions} For each language and item, the coefficient of the model's age effect. Across languages, complexity items tend to have a substantially larger age effect than word form items. No Spanish complexity items had exclusively morphological content.}
 \end{figure*}
 
 Because of the size of our samples, all main effects and interactions are highly significant. To assess the extent of the age contribution to children's morphological and syntactic development, we compared the coefficients of Word form and Complexity models. Figure~\ref{fig:coefs_grammar} shows the coefficient of the age effect for each measure across languages. In each language, the age effect coefficient is substantially larger for Complexity than Word Form, indicating a greater age effect on those items that generally align with syntax than morphology.
 
-Given the heterogeneous nature of the CDI instruments, particularly of the complexity sections, we further break down the items of the complexity sections by classifying them as capturing more morphological or more syntactic phenomena. We then fit predictive models as above, but separately for each item. Figure \ref{fig:interactions} shows the coeffcients of the age effect for each item. In general, there is a clear three-way split: age effects are smallest for Word Form items, then morphological Complexity items, and largest for syntactic Complexity items, again supporting the hypothesis of greater age contributions to relatively more syntactic phenomena. 
+Given the heterogeneous nature of the CDI instruments, particularly of the complexity sections, we further broke down the items of the complexity sections by classifying them as capturing more morphological or more syntactic phenomena. We coded as Morphological the items for which the difference between the simple and complex sentences is in the inflection of a noun or verb (such as \emph{doggie kiss me / doggie kissed me}). The rest of the items were coded as Syntactic, since they involve the use of some syntactic construction (such as \emph{doggie table / doggie on table}).
+
+We then fit predictive models as above, but separately for every item. Figure \ref{fig:interactions} shows the coeffcients of the age effect for each item. In general, there is a clear three-way split: age effects are smallest for Word Form items, then morphological Complexity items, and largest for syntactic Complexity items, again supporting the hypothesis of greater age contributions to relatively more syntactic phenomena. 
 
 \subsubsection{Discussion}
 
-Building on previous analyses that showed a strong relationship between lexical and grammatical development, we added age into this relationship. Our measures of syntactic development consistently showed greater age modulation than morphological development across languages. Further distinguishing between items that were more reflective of morphology compared with syntax, we again found greater age effects for more syntactic items. Thus, this analysis provides evidence for the relationship between syntactic development and age, over and above the variance associated with lexical development. 
+Building on previous analyses that showed a strong relationship between lexical and grammatical development, we added age into this relationship. Across languages, our measures of syntactic development consistently showed greater age modulation than measures of morphological development. Further distinguishing between items that were more reflective of morphology than syntax, we again found greater age effects for more syntactic items. Thus, this analysis provides evidence for a relationship between syntactic development and age, over and above lexical development.
 
 \subsection{Analysis 2: Vocabulary Composition}
 
@@ -188,8 +185,6 @@ We predict that the proportion of predicates and function words in children's vo
 
 On the syntactic bootstrapping hypothesis \cite{gleitman1990,fisher2010}, verbs especially are learned by mapping the syntactic structure of utterances to the thematic structure of observed events, for example by noticing that the subject of a sentence matches the agent in one particular ongoing event but not another (``the cat is fleeing the dog'' matches \textsc{flees(cat, dog)} but not \textsc{chases(dog,cat)}). A similar argument can be made for adjectives, since identification of the modified noun is similarly critical for inferring the meaning of the modifier. And by the same logic, function words should be even harder to learn without some understanding of their syntactic role. Thus, if syntactic development is related in some way to age, we should see larger age effects on predicate and function word vocabulary than noun vocabulary. 
 
-\vfill
-
 \subsubsection{Results}
 
 Each CDI form contains a mixture of words in different classes. We adopt the categorization of \citeA{bates1994}, splitting words into nouns, predicates (verbs and adjectives), function words, and other words. For each child's vocabulary, we compute the proportion of the total words in each of these categories that they are reported to produce.
@@ -202,7 +197,7 @@ Next, we measure the contribution of age to vocabulary composition. We fit a log
 
 We replicated previous analyses \cite{bates1994} showing an over-representation of nouns in the developing lexicon and a relative under-representation of predicates and function words. We also predicted that---if syntactic generalization was in some way tied to age---predicates and function words would show relatively more age influence than nouns. Although there was some cross-language variation in predicate terms, overall this prediction was confirmed across the four languages we examined. Thus, this analysis provides additional evidence for a relationship between syntactic development and age, independent of the growth of the lexicon.
 
-\begin{figure}
+\begin{figure}[tb]
 \centering
 \includegraphics[width=\linewidth]{plots/coefs_vocab_comp.png}
 \caption{\label{fig:coefs_vocab_comp} For each language and lexical category, the coefficient of the model's age effect term. Across languages, predicates and function words have a substantially larger age effect than nouns.}
@@ -210,7 +205,7 @@ We replicated previous analyses \cite{bates1994} showing an over-representation 
 
 \section{General Discussion}
 
-The current study addresses novel questions regarding lexical and grammatical development by taking advantage of Wordbank, a newly-developed web-based tool which compiles a large number of CDI forms in many different languages. We compared estimates of age-related contributions to grammatical development using different approaches: their reported usage of various morphological forms and syntactic constructions, and the substructure of their vocabularies by grammatical category. For each metric, we used vocabulary size as a predictor and examined the effects of age on this predictive relationship.
+The current study addresses novel questions regarding lexical and grammatical development by taking advantage of Wordbank, a newly-developed web-based tool which compiles a large number of CDI forms in many different languages. We compared estimates of age-related contributions to grammatical development using different approaches: reported usage of various morphological forms and syntactic constructions, and the substructure of vocabularies by lexical category. For each metric, we used vocabulary size as a predictor and examined the effects of age on this predictive relationship.
 
 Across four languages, we find that measures of grammar that are more closely aligned with syntax are modulated by age to a greater extent than those reflecting inflectional morphology. Moreover, we find that developmental changes in predicate and function word representation in the vocabulary is modulated by age to a greater extent than noun proportion (albeit with some variability in age effects on predicate terms across languages). Both of these findings suggest a place for developmental processes that facilitate grammatical acquisition beyond pure lexical growth.
 
