@@ -88,7 +88,7 @@ We begin by describing the Wordbank database, the CDI measures, and our general 
 
 We made use of Wordbank, a structured database of CDI data, to aggregate and archive CDI data across languages and labs. Wordbank is a repository that stores CDI data in a relational database for easy querying and analysis. By collecting language development data at an unprecedented scale, Wordbank enables the exploration of novel hypotheses about the course of lexical and grammatical development. At the time of writing, Wordbank includes data in four languages: English \cite{fenson2007}, Spanish \cite{jackson1993}, Norwegian \cite{simonsen2014}, and Danish \cite{bleses2008}, with both cross-sectional and longitudinal data. This dataset encompasses norming data from each language as well as a number of smaller-scale studies, some of which did not provide data from the grammar sections. Table \ref{table:num} presents the total number of administrations and the number of administrations for which grammar (word form and complexity) data were also available.
 
-\begin{table}[t]
+\begin{table}
 \begin{center}
 \begin{tabular}{lrr}
 \hline
@@ -110,7 +110,7 @@ Total & 19822 & 15810 \\
 
 In all four languages, the CDIs contain both vocabulary checklists and other questions relevant to the child's linguistic development. All of the data reported here come from the Words \& Sentences form, administered to children ages 16 -- 32 months. Each of these instruments includes a vocabulary section, which asks whether the child produces each of around 700 words from a variety of semantic and syntactic categories (e.g., \emph{foot}, \emph{run}, \emph{so}); a word form section, which asks whether the child produces each of around 30 morphologically inflected forms of nouns and verbs (e.g., \emph{feet}, \emph{ran}); and a complexity section, which asks whether the child's speech is most similar to the syntactically simpler or more complex versions of around 40 sentences (e.g., \emph{two foot} vs. \emph{two feet}, \emph{there a kitty} vs. \emph{there's a kitty}). Each language's instrument is not merely a translation of the English Words \& Sentences form, but rather was constructed and normed specifically to reflect the lexicon and grammar of that language. Table \ref{table:measures} shows, for each language, the number of items in each of these sections.
 
-\begin{table}[t]
+\begin{table}
 \begin{center}
 \begin{tabular}{lccc}
 \hline
@@ -122,8 +122,8 @@ Norwegian & 731 & 33 & 42\\
 Danish & 725 & 29 & 33\\ 
 \hline
 \end{tabular}
-\caption{\label{table:measures} Overview of instruments in each language: number of items in each section.}
 \end{center}
+\caption{\label{table:measures} Overview of instruments in each language: number of items in each section.}
 \end{table}
 
 To analyze lexical and grammatical development, we derive several measures. Each child's vocabulary size is computed as the proportion of words on the corresponding CDI form that the child is reported to produce. Similarly, each child's word form score is the proportion of word forms they are reported to produce, and their complexity score the proportion of complexity items for which they are reported to use the more complex form. We compute all of these quantities as proportions to make the scales comparable across languages.
@@ -187,11 +187,13 @@ For our purposes we are interested in using these analyses of vocabulary composi
 
 We predict that the proportion of predicates and function words in children's vocabulary should be relatively more affected by age than nouns. Concrete nouns are hypothesized to be learned initially from both co-occurrences between words \cite{yu2007b} and by social cues to reference to particular objects \cite{bloom2002}. On neither of these accounts should syntactic information be a primary information source (though of course syntax might be more informative for abstract nouns). In contrast, for other types of words, syntax should be more important for meaning learning. 
 
-On the syntactic bootstrapping hypothesis \cite{gleitman1990,fisher2010}, verbs especially are learned by mapping the syntactic structure of utterances to the thematic structure of observed events, for example by noticing that the subject of a sentence matches the agent in one particular ongoing event but not another (``the cat is fleeing the dog'' matches {\sc flees(cat, dog)} but not {\sc chases(dog,cat)}). A similar argument can be made for adjectives, since identification of the modified noun is similarly critical for inferring the meaning of the modifier. And by the same logic, function words should be even harder to learn without some understanding of their syntactic role.   Thus, if syntactic development is related in some way to age, we should see larger age effects on predicate and function-word vocabulary than noun vocabulary. 
+On the syntactic bootstrapping hypothesis \cite{gleitman1990,fisher2010}, verbs especially are learned by mapping the syntactic structure of utterances to the thematic structure of observed events, for example by noticing that the subject of a sentence matches the agent in one particular ongoing event but not another (``the cat is fleeing the dog'' matches \textsc{flees(cat, dog)} but not \textsc{chases(dog,cat)}). A similar argument can be made for adjectives, since identification of the modified noun is similarly critical for inferring the meaning of the modifier. And by the same logic, function words should be even harder to learn without some understanding of their syntactic role.   Thus, if syntactic development is related in some way to age, we should see larger age effects on predicate and function word vocabulary than noun vocabulary. 
+
+\vfill
 
 \subsubsection{Results}
 
-Each CDI form contains a mixture of words in different classes. We adopt the categorization of \citeA{bates1994}, who split words in nouns, predicates (adjectives, adverbs, and verbs), function words, and other words. Then, for each child's vocabulary, we compute the proportion of the total words in each of these categories that they are reported to produce. This yields a set of proportions for each child.
+Each CDI form contains a mixture of words in different classes. We adopt the categorization of \citeA{bates1994}, splitting words into nouns, predicates (verbs and adjectives), function words, and other words. For each child's vocabulary, we compute the proportion of the total words in each of these categories that they are reported to produce.
 
 For each of the four languages in our sample, we plot these proportions against total vocabulary. These functions are shown in Figure \ref{fig:vocab_comp}: Each dot represents an individual child's knowledge of a particular class, while curves show the relationship between that class and the entirety of the vocabulary. If categories grow independently of one another, these curves should approximate the diagonal. This pattern is not what either we or \citeauthor{bates1994} observed, however: Across the languages in our sample, nouns are systematically over-represented in smaller vocabularies (shown by a curve that is above the diagonal), while function words---and to some extent, predicates---are under-represented. 
 
@@ -199,7 +201,7 @@ Next, we measure the contribution of age to vocabulary composition. We fit a log
 
 \subsubsection{Discussion}
 
-We replicated previous analyses \cite{bates1994} showing an over-representation of nouns in the developing lexicon and a relative under-representation of predicates and function-words. We also predicted that---if syntactic generalization was in some way tied to age---predicates and function words would show relatively more age influence than nouns. Although there was some cross-language variation in predicate terms, overall this prediction was confirmed across the four languages we examined. Thus, this analysis provides additional evidence for a relationship between syntactic development and age, independent of the growth of the lexicon.
+We replicated previous analyses \cite{bates1994} showing an over-representation of nouns in the developing lexicon and a relative under-representation of predicates and function words. We also predicted that---if syntactic generalization was in some way tied to age---predicates and function words would show relatively more age influence than nouns. Although there was some cross-language variation in predicate terms, overall this prediction was confirmed across the four languages we examined. Thus, this analysis provides additional evidence for a relationship between syntactic development and age, independent of the growth of the lexicon.
 
 \begin{figure}
 \centering
