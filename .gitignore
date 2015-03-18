@@ -24,6 +24,6 @@ $*.xlsx
 *.pdf
 *.out
 
-# knitr cache/files
+# knitr cache
 *_cache
-*_files
+
