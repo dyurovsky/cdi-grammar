@@ -5,7 +5,7 @@
 *-Ex.R
 
 # R data files from past sessions
-.Rdata
+*.Rdata
 
 # RStudio files
 .Rproj.user/
@@ -14,9 +14,16 @@
 .DS_Store
 $*.xlsx
 
+# LaTeX stuff
 *.aux
 *.log
 *.gz
 *.bbl
 *.blg
 *.dvi
+*.pdf
+*.out
+
+# knitr cache/files
+*_cache
+*_files
