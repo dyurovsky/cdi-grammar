@@ -27,13 +27,7 @@ library(dplyr)
 library(tidyr)
 library(RMySQL)
 library(RCurl)
-```
-
-Get a script that provides interface functions for pulling data out of Wordbank.
-```{r, cache=FALSE}
-url <- 'https://raw.githubusercontent.com/langcog/wordbank/master/shiny_apps/data_loading.R'
-script <- getURL(url, ssl.verifypeer = FALSE)
-eval(parse(text = script))
+source('data_loading.R')
 ```
 
 Load in Wordbank common data.

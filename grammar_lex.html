@@ -90,12 +90,8 @@ img {
 <span class="kw">library</span>(dplyr)
 <span class="kw">library</span>(tidyr)
 <span class="kw">library</span>(RMySQL)
-<span class="kw">library</span>(stringr)
-<span class="kw">library</span>(RCurl)</code></pre>
-<p>Get a script that provides interface functions for pulling data out of Wordbank.</p>
-<pre class="sourceCode r"><code class="sourceCode r">url &lt;-<span class="st"> 'https://raw.githubusercontent.com/langcog/wordbank/master/shiny_apps/data_loading.R'</span>
-script &lt;-<span class="st"> </span><span class="kw">getURL</span>(url, <span class="dt">ssl.verifypeer =</span> <span class="ot">FALSE</span>)
-<span class="kw">eval</span>(<span class="kw">parse</span>(<span class="dt">text =</span> script))</code></pre>
+<span class="kw">library</span>(RCurl)
+<span class="kw">source</span>(<span class="st">'data_loading.R'</span>)</code></pre>
 <p>Load in Wordbank common data.</p>
 <pre class="sourceCode r"><code class="sourceCode r">wordbank &lt;-<span class="st"> </span><span class="kw">src_mysql</span>(<span class="dt">dbname=</span><span class="st">&quot;wordbank&quot;</span>)
 
