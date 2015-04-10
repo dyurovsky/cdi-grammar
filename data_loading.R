@@ -33,7 +33,7 @@ get.instrument.tables <- function(db, instrumentsmap) {
   instrument.tables <- as.data.frame(instrumentsmap) %>%
     mutate(table.name = paste("instruments", tolower(language), tolower(form), sep = "_")) %>%
     rename(instrument_id = id) %>%
-    group_by(instrument_id, language, form, age_min, age_max) %>%
+    group_by(instrument_id, language, form, age_min, age_max, has_grammar) %>%
     do(table = tbl(db, .$table.name))
   
   return(instrument.tables)
@@ -78,14 +78,18 @@ get.administration.data <- function(momed.table, child.table, instruments.table,
 
 
 # Gets by-item data from an instrument with information from the wordmapping table
-get.item.data <- function(wordmapping.table, instruments.table) {
+get.item.data <- function(wordmapping.table, instruments.table, categories.table) {
   
   instruments <- as.data.frame(instruments.table) %>%
     rename(instrument_id = id)
   
+  categories <- as.data.frame(categories.table) %>%
+    rename(category_id = id)
+  
   items <- as.data.frame(wordmapping.table) %>%
     rename(item.id = item_id) %>%
-    left_join(instruments)
+    left_join(instruments) %>%
+    left_join(categories)
   
   return(items)
   
