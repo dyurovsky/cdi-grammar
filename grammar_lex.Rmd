@@ -382,10 +382,10 @@ get.vocab.composition <- function(lang) {
 
 vocab.composition <- bind_rows(sapply(languages, get.vocab.composition,
                                       simplify = FALSE)) %>%
-  filter(lexical_category != "other", lexical_category != "unknown") %>%
+  filter(lexical_category != "unknown") %>%
   mutate(lexical_category = factor(lexical_category,
-                                   levels=c("nouns", "predicates", "function_words"),
-                                   labels=c("Nouns", "Predicates", "Function Words")))
+                                   levels=c("nouns", "predicates", "function_words","other"),
+                                   labels=c("Nouns", "Predicates", "Function Words","Other")))
 ```
 
 Fit vocabulary composition models and use them to predict data.
@@ -401,7 +401,7 @@ get.vocab.model <- function(lang, cat) {
 
 vocab.predicted.data <- vocab.composition %>%
   group_by(language, lexical_category) %>%
-  mutate(predicted = invlogit(predict.lm(get.vocab.model(unique(language),
+  mutate(predicted = inv.logit(predict.lm(get.vocab.model(unique(language),
                                                          unique(lexical_category)),
                                          data = ., family = "binomial")))
 ```
@@ -428,6 +428,33 @@ ggplot(vocab.predicted.data,
         text = element_text(family=font)) +
   scale_color_brewer(palette = "Set2", name = "Lexical Category")
 ```
+
+Try this with loess
+
+```{r vocab_data_plot, fig.width=10, fig.height=8}
+ggplot(vocab.composition,
+       aes(x=vocab.mean, y=mean, colour=lexical_category, label=lexical_category)) +
+  geom_jitter(alpha=0.15, size=.75) +
+#   geom_line(aes(y=predicted),size=0.65) + 
+  geom_smooth(size=.65) +
+  facet_wrap(~ language) +
+  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
+                     name = "Proportion of Category\n") +
+  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
+                     name = "\nVocabulary Size") +
+  geom_abline(slope=1,intercept=0,col="black",lty=2) + 
+  theme_bw(base_size=12) + 
+  theme(legend.position = c(0.065,0.95),
+        legend.text = element_text(size=9),
+        legend.title = element_text(size=9, lineheight=unit(0.8, "char")),
+        legend.key.height = unit(0.8, "char"),
+        legend.key.width = unit(0.3, "cm"),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill="transparent"),
+        text = element_text(family=font)) +
+  scale_color_brewer(palette = "Set2", name = "Lexical Category")
+```
+
 
 ```{r, include=FALSE}
 #ggsave(file=("~/Documents/plots/composition_fit.png"), width=10, height=2.9, dpi=300)
