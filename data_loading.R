@@ -84,7 +84,8 @@ get.item.data <- function(wordmapping.table, instruments.table, categories.table
     rename(instrument_id = id)
   
   categories <- as.data.frame(categories.table) %>%
-    rename(category_id = id)
+    rename(category_id = id,
+           category = name)
   
   items <- as.data.frame(wordmapping.table) %>%
     rename(item.id = item_id) %>%
