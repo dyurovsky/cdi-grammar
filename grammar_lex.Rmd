@@ -1,7 +1,7 @@
 ---
 title: "Developmental Changes in the Relationship Between Grammar and the Lexicon"
 author: "Mika Braginsky, Daniel Yurovsky, Virginia Marchman, and Michael Frank"
-date: "2015-04-20"
+date: "2015-04-25"
 output:
   html_document:
     highlight: tango
@@ -490,6 +490,10 @@ get_area <- function(predictions, pts, width) {
   area <- sum(mid_dists * width)
   return(area)
 }
+
+model <- loess(mean ~ vocab.mean, data = filter(vocab.composition, language == "English",
+                                                lexical_category == "Nouns"),
+               control = loess.control(surface="direct"))
 
 width <- 0.01
 pts <- seq(0, 1, width)
