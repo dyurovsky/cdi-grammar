@@ -1,7 +1,7 @@
 ---
 title: "Developmental Changes in the Relationship Between Grammar and the Lexicon"
 author: "Mika Braginsky, Daniel Yurovsky, Virginia Marchman, and Michael Frank"
-date: "2015-04-25"
+date: "2015-04-29"
 output:
   html_document:
     highlight: tango
@@ -33,26 +33,27 @@ source('data_loading.R')
 
 Load in Wordbank common data.
 ```{r database}
-wordbank <- src_mysql(host = "54.149.39.46", dbname="wordbank",
-                      user = "wordbank", password = "wordbank")
+wordbank <- connect.to.wordbank("prod")
 
 common.tables <- get.common.tables(wordbank)
+
+instrument.tables <- get.instrument.tables(wordbank, common.tables$instruments)
+languages <- c("Norwegian", "English", "Danish", "Spanish")
 
 admins <- get.administration.data(common.tables$momed,
                                   common.tables$child,
                                   common.tables$instrumentsmap,
                                   common.tables$administration) %>%
-  filter(form == "WS", age > 15, age < 32) %>%
-  mutate(age.group = cut(age, breaks = c(15, 19, 23, 27, 31)))
+  filter(form == "WS", age > 15, age < 32,
+         language %in% languages) %>%
+  mutate(age.group = cut(age, breaks = c(15, 19, 23, 27, 31)),
+         language = factor(language, levels = languages))
 
 items <- get.item.data(common.tables$wordmapping,
                        common.tables$instrumentsmap,
-                       common.tables$category)
-
-instrument.tables <- get.instrument.tables(wordbank, common.tables$instruments)
-
-grammar.languages <- unique(filter(instrument.tables, has_grammar == 1)$language)
-languages <- unique(instrument.tables$language)
+                       common.tables$category) %>%
+  filter(language %in% languages) %>%
+  mutate(language = factor(language, levels = languages))
 ```
 
 Show number of items in each relevant section.
@@ -154,7 +155,7 @@ get.grammar.data <- function(lang) {
   
   }
 
-grammar.data <- bind_rows(sapply(grammar.languages, get.grammar.data, simplify = FALSE))
+grammar.data <- bind_rows(sapply(languages, get.grammar.data, simplify = FALSE))
 ```
 
 Get by kid summary data for all languages.
@@ -197,10 +198,10 @@ ggplot(grammar.predicted.data, aes(x = vocab.mean, y = mean,
   scale_y_continuous(limits = c(0,1), breaks = seq(0,1,.25),
                      "Score (Mean Items)\n") + 
   theme_bw(base_size = 11) +
-  theme(legend.position = c(0.06,0.92),
-        legend.text = element_text(size=7),
-        legend.title = element_text(size=7),
-        legend.key.height = unit(0.7, "char"),
+  theme(legend.position = c(0.055,0.925),
+        legend.text = element_text(size=9),
+        legend.title = element_text(size=9),
+        legend.key.height = unit(1, "char"),
         legend.key.width = unit(0.4, "cm"),
         legend.key = element_blank(),
         legend.background = element_rect(fill="transparent"),
@@ -389,145 +390,26 @@ vocab.predicted.data <- vocab.composition %>%
 ```
 
 Plot vocabulary composition as a function of vocabulary size for each language with model prediction curves.
-```{r vocab_data_plot, fig.width=10, fig.height=8}
+```{r vocab_data_plot, fig.width=10, fig.height=2.9}
 ggplot(vocab.predicted.data,
        aes(x=vocab.mean, y=mean, colour=lexical_category, label=lexical_category)) +
   geom_jitter(alpha=0.15, size=.75) +
   geom_line(aes(y=predicted),size=0.65) + 
-  facet_wrap(~ language) +
+  facet_wrap(~ language, nrow = 1, ncol = 4) +
   scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
                      name = "Proportion of Category\n") +
   scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
                      name = "\nVocabulary Size") +
   theme_bw(base_size=12) + 
-  theme(legend.position = c(0.065,0.95),
+  theme(legend.position = c(0.065,0.83),
         legend.text = element_text(size=9),
-        legend.title = element_text(size=9, lineheight=unit(0.8, "char")),
+        legend.title = element_text(size=9, lineheight=unit(0.7, "char")),
         legend.key.height = unit(0.8, "char"),
         legend.key.width = unit(0.3, "cm"),
         legend.key = element_blank(),
         legend.background = element_rect(fill="transparent"),
         text = element_text(family=font)) +
   scale_color_brewer(palette = "Set2", name = "Lexical Category")
-```
-
-Same plot but with loess curves fit instead.
-```{r vocab_data_language, fig.width=10, fig.height=8}
-ggplot(vocab.composition,
-       aes(x=vocab.mean, y=mean, colour=lexical_category)) +
-#  geom_jitter(alpha=0.15, size=.75) +
-  geom_smooth(size=.65, method = "loess", control = loess.control(surface="direct")) +
-  facet_wrap(~ language) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0,1,.2),
-                     name = "Proportion of Category\n") +
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
-                     name = "\nVocabulary Size") +
-  geom_abline(slope=1, intercept=0, color="gray", linetype = "dashed") + 
-  theme_bw(base_size=12) + 
-  theme(legend.position = c(0.068,0.95),
-        legend.text = element_text(size=9),
-        legend.title = element_text(size=9, lineheight=unit(0.8, "char")),
-        legend.key.height = unit(0.8, "char"),
-        legend.key.width = unit(0.3, "cm"),
-        legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text = element_text(family=font)) +
-  scale_color_brewer(palette = "Set1", name = "Lexical Category")
-```
-
-Now separated by lexical category.
-```{r vocab_data_lexcat, fig.width=10, fig.height=8}
-ggplot(vocab.composition,
-       aes(x=vocab.mean, y=mean, colour=language)) +
-  geom_jitter(alpha=0.15, size=.75) +
-  geom_smooth(size=.65, method = "loess") +
-  facet_wrap(~ lexical_category) +
-  scale_y_continuous(limits = c(0, 1), breaks = seq(0,1,.2),
-                     name = "Proportion of Category\n") +
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
-                     name = "\nVocabulary Size") +
-  geom_abline(slope=1, intercept=0, color="gray", linetype = "dashed") + 
-  theme_bw(base_size=12) + 
-  theme(legend.position = c(0.05,0.84),
-        legend.text = element_text(size=9),
-        legend.title = element_text(size=9, lineheight=unit(0.8, "char")),
-        legend.key.height = unit(0.8, "char"),
-        legend.key.width = unit(0.3, "cm"),
-        legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text = element_text(family=font)) +
-  scale_color_brewer(palette = "Spectral", name = "Language")
-```
-
-For each language and lexical category, find the point in vocabulary size at which the proportion predicted by the loess model is farthest from the diagonal, as well the value of that distance and an estimate of the total area under the curve.
-```{r dists}
-get_predictions <- function(model, pts) {
-  predictions <- predict(model, data.frame(vocab.mean=pts))
-  predictions[1] <- 0.0
-  predictions[length(predictions)] <- 1.0
-  return(predictions)
-}
-
-get_max_pos <- function(predictions, pts) {
-  dists <- predictions - pts
-  far.point <- which.max(abs(dists))
-  far.point.pos <- pts[far.point]
-  return(far.point.pos)
-}
-
-get_max_val <- function(predictions, pts) {
-  dists <- predictions - pts
-  far.point <- which.max(abs(dists))
-  far.point.val <- predictions[far.point]
-  return(far.point.val)
-}
-
-get_area <- function(predictions, pts, width) {
-  dists <- predictions - pts
-  first_dists <- dists[1:length(dists)-1]
-  second_dists <- dists[2:length(dists)]
-  mid_dists <- (first_dists + second_dists) / 2
-  area <- sum(mid_dists * width)
-  return(area)
-}
-
-model <- loess(mean ~ vocab.mean, data = filter(vocab.composition, language == "English",
-                                                lexical_category == "Nouns"),
-               control = loess.control(surface="direct"))
-
-width <- 0.01
-pts <- seq(0, 1, width)
-dists <- vocab.composition %>%
-  group_by(language, lexical_category) %>%
-  do(predictions = get_predictions(loess(mean ~ vocab.mean, data = .,
-                                         control = loess.control(surface="direct")),
-                                   pts)) %>%
-  mutate(dist_pos = get_max_pos(predictions, pts),
-         dist_val = get_max_val(predictions, pts),
-         area = get_area(predictions, pts, width))
-
-# get_group_predictions <- function(lang, lexcat) {
-#   values <- filter(dists, language == lang, lexical_category == lexcat)$predictions[[1]]
-#   predictions <- data.frame(language = lang,
-#                             lexical_category = lexcat,
-#                             vocab.mean = pts,
-#                             mean = values)
-#   return(predictions)
-#   }
-# 
-# predicted_data <- bind_rows(map2(dists$language, dists$lexical_category, get_group_predictions))
-```
-
-Plot point of maximum distance against estimate of area.
-```{r dists_plot, fig.width=8, fig.height=6}
-ggplot(dists, aes(x = dist_pos, y = area, color = lexical_category)) +
-  geom_text(aes(label = language), size = 3) +
-  geom_hline(aes(y = 0), color = "gray", linetype = "dashed") +
-  scale_colour_brewer(palette = "Set1", name = "") +
-  theme_bw() +
-  theme(text = element_text(family = font)) +
-  scale_x_continuous(name = "\nPosition of maximum distance", limits = c(0,1.05)) +
-  scale_y_continuous(name = "Estimate of area\n")
 ```
 
 Fit vocabulary composition models and get their AICs and age coefficients.
@@ -552,7 +434,7 @@ kable(select(vocab.model.metrics,
 ```
 
 Plot age effect coefficients for each language and lexical category.
-```{r vocab_coef_plot, fig.width=9, fig.height=4}
+```{r vocab_coef_plot, fig.width=6, fig.height=4}
 ggplot(vocab.model.metrics, 
        aes(x=language, y=age.coef, fill=lexical_category)) + 
   geom_bar(position="dodge", stat="identity") + 
@@ -563,10 +445,10 @@ ggplot(vocab.model.metrics,
   theme_bw(base_size = 14) +
   scale_fill_brewer(palette = "Set2",
                     name = "Lexical Category") +
-  theme(legend.position = c(0.115,0.82),
+  theme(legend.position = c(0.17,0.85),
         legend.text = element_text(size=13),
         legend.title = element_text(size=13),
-        legend.key.height = unit(1.5, "char"),
+        legend.key.height = unit(1.2, "char"),
         legend.key = element_blank(),
         legend.background = element_rect(fill="transparent"),
         text = element_text(family=font))
