@@ -1,7 +1,7 @@
 ---
 title: "Developmental Changes in the Relationship Between Grammar and the Lexicon"
 author: "Mika Braginsky, Daniel Yurovsky, Virginia Marchman, and Michael Frank"
-date: "2015-05-01"
+date: "`r Sys.Date()`"
 output:
   html_document:
     highlight: tango
@@ -10,50 +10,43 @@ output:
 
 ```{r setup, include=FALSE}
 library(knitr)
-opts_chunk$set(cache=TRUE, message=FALSE, warning=FALSE)
-font = "Open Sans"
+opts_chunk$set(cache = TRUE, message = FALSE, warning = FALSE)
+library(MASS)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(purrr)
+library(lazyeval)
+library(magrittr)
+library(langcog)
+library(wordbankr)
+font <- "Open Sans"
+theme_set(theme_bw())
 ```
 
 ***
 
-## Data Loading
-
-Load required libraries.
-```{r libraries, cache=FALSE}
-library(arm)
-library(boot)
-library(ggplot2)
-library(grid)
-library(dplyr)
-library(tidyr)
-library(RMySQL)
-library(RCurl)
-source('data_loading.R')
-```
-
-Load in Wordbank common data.
+Load in Wordbank administration and item data.
 ```{r database}
-wordbank <- connect.to.wordbank("prod")
-
-common.tables <- get.common.tables(wordbank)
-
-instrument.tables <- get.instrument.tables(wordbank, common.tables$instruments)
+data_mode <- "local"
 languages <- c("Norwegian", "English", "Danish", "Spanish")
 
-admins <- get.administration.data(common.tables$momed,
-                                  common.tables$child,
-                                  common.tables$instrumentsmap,
-                                  common.tables$administration) %>%
-  filter(form == "WS", age > 15, age < 32,
-         language %in% languages) %>%
-  mutate(age.group = cut(age, breaks = c(15, 19, 23, 27, 31)),
-         language = factor(language, levels = languages))
-
-items <- get.item.data(common.tables$wordmapping,
-                       common.tables$instrumentsmap,
-                       common.tables$category) %>%
-  filter(language %in% languages) %>%
+admins <- get_administration_data(filter_age = FALSE, mode = data_mode) %>%
+  filter(form == "WS", language %in% languages) %>%
   mutate(language = factor(language, levels = languages))
+
+items <- get_item_data(mode = data_mode) %>%
+  filter(form == "WS", language %in% languages) %>%
+  mutate(language = factor(language, levels = languages),
+         num_item_id = as.numeric(substr(item_id, 6, nchar(item_id))))
+```
+
+Set up analysis-wide constants.
+```{r constants}
+vocab_step <- 0.01
+min_age <- 16
+max_age <- 31
+num_age_groups <- 2
 ```
 
 Show number of items in each relevant section.
@@ -62,76 +55,85 @@ sections <- items %>%
   filter(form == "WS") %>%
   group_by(language, type) %>%
   summarise(n = n()) %>%
-  spread(type, n) %>%
+  spread(type, n, fill = 0) %>%
   select(language, word, word_form, complexity)
-sections[is.na(sections)] = 0
 kable(sections)
 ```
 
 Show total number of administrations in each language.
 ```{r n_admins}
-n.admin <- admins %>%
+n_admin <- admins %>%
   group_by(language) %>%
   summarise(n = n())
-kable(n.admin)
+kable(n_admin)
 ```
 
 Show number of administrations in each language by age group.
 ```{r n_admins_age}
-n.admin.age <- admins %>% 
-  group_by(language, age.group) %>% 
+n_admin_age <- admins %>%
+  filter(age >= min_age, age <= max_age) %>%
+  mutate(age_group = cut(age, breaks = seq(min_age - 1, max_age,
+                                           length = num_age_groups + 1))) %>%
+  group_by(language, age_group) %>%
   summarise(n = n()) %>%
-  spread(age.group, n)
-kable(n.admin.age)
+  spread(age_group, n)
+kable(n_admin_age)
 ```
 
 Some utility functions for transforming data values.
-```{r util_funs}
-get.coded.type <- function(type, complexity_category) {
+```{r utils}
+get_coded_type <- function(type, complexity_category) {
   if (type == "complexity") {
     return(complexity_category)
-    } else {
-      return(type)
-      }
+  } else {
+    return(type)
   }
+}
 
-get.value <- function(type, value) {
+get_value <- function(type, value) {
   if (type == "word_form" | type == "word") {
     return(value == "produces")
-    } else if (type == "complexity") {
-      return(value == "complex")
-      }
+  } else if (type == "complexity") {
+    return(value == "complex")
   }
+}
+
+format_group <- function(group) {
+  paste(
+    map(strsplit(group, " - ")[[1]],
+        function(bin) {
+          paste0("(", paste(strsplit(bin, "\\.")[[1]][-1], collapse = ","), "]")
+        })
+    , collapse = "-")
+}
 ```
-
-***
-
-## Analysis 1: Syntax and Morphology
 
 Get kid by item data for wordform and complexity items all languages and aggregate them.
 ```{r grammar_data}
-get.grammar.data <- function(lang) {
+get_lang_grammar_data <- function(lang) {
   
-  lang.grammar.items <- items %>%
-    filter(language == lang, form == "WS",
-           type == "word_form" | type == "complexity") %>%
-    rename(column = item.id) %>%
-    mutate(item.id = as.numeric(substr(column, 6, nchar(column)))) %>%
-    select(column, item.id, type, item, definition, complexity_category)
+  lang_grammar_items <- items %>%
+    filter(language == lang, type %in% c("word_form", "complexity"))
   
-  lang.instrument.table <- filter(instrument.tables, language == lang,
-                                  form == "WS")$table[[1]]
+  lang_num_words <- nrow(filter(items, language == lang, type == "word"))
   
-  lang.grammar.data <- get.instrument.data(lang.instrument.table,
-                                           lang.grammar.items$column) %>%
-    left_join(lang.grammar.items) %>%
+  lang_admins <- admins %>%
+    filter(language == lang) %>%
+    mutate(vocab_prop = production / lang_num_words)
+  
+  lang_grammar_data <- get_instrument_data(instrument_language = lang,
+                                           instrument_form = "WS",
+                                           items = lang_grammar_items$item_id,
+                                           administrations = lang_admins,
+                                           iteminfo = lang_grammar_items,
+                                           mode = data_mode) %>%
     group_by(data_id, type) %>%
     mutate(no_section = all(is.na(value))) %>%
     filter(!no_section) %>%
     mutate(value = ifelse(is.na(value), "", value),
-           value = get.value(unique(type), value),
-           coded.type = get.coded.type(unique(type), complexity_category),
-           coded.type = factor(coded.type,
+           value = get_value(unique(type), value),
+           coded_type = get_coded_type(unique(type), complexity_category),
+           coded_type = factor(coded_type,
                                levels = c("word_form", "morphology", "syntax"),
                                labels = c("Word Form",
                                           "Complexity (Morphological)",
@@ -139,317 +141,355 @@ get.grammar.data <- function(lang) {
            measure = factor(type, levels = c("word_form", "complexity"),
                             labels = c("Word Form", "Complexity"))) %>%
     ungroup() %>%
-    select(-complexity_category, -no_section, -type, -column)
+    select(-complexity_category, -no_section, -type)
   
-  num.words <- nrow(filter(items, language == lang, form == "WS", type == "word"))
+  return(lang_grammar_data)
   
-  lang.admins <- admins %>%
-    filter(language == lang) %>%
-    select(data_id, age, age.group, production, language) %>%
-    mutate(vocab.mean = production / num.words)
-  
-  lang.data <- left_join(lang.grammar.data, lang.admins) %>%
-    filter(age > 15 & age < 32)
-  
-  return(lang.data)
-  
-  }
+}
 
-grammar.data <- bind_rows(sapply(languages, get.grammar.data, simplify = FALSE))
+grammar_data <- languages %>%
+  map(get_lang_grammar_data) %>%
+  bind_rows() %>%
+  filter(age >= min_age, age <= max_age)
 ```
 
 Get by kid summary data for all languages.
 ```{r grammar_summary}
-grammar.summary <- grammar.data %>%
-  group_by(language, measure, data_id, age, age.group, vocab.mean) %>%
-  summarise(sum = sum(value),
-            diff = length(value) - sum,
-            mean = sum / length(value))
+grammar_summary <- grammar_data %>%
+  group_by(language, measure, data_id, age, vocab_prop) %>%
+  summarise(num_true = sum(value),
+            num_false = n() - num_true,
+            prop = num_true / n())
+```
+
+Model comparison: fit various grammar models and compare their adjusted R-squared values.
+```{r grammar_metrics}
+rsq <- function(object) {
+  1 - sum(residuals(object, type = "response") ^ 2) / sum(object$y ^ 2)
+}
+
+adj_rsq <- function(object) {
+  rsq <- rsq(object)
+  p <- summary(object)$df[1]
+  n_p <- summary(object)$df[2]
+  rsq - (1 - rsq) * (p / (n_p - 1))
+}
+
+models <- list(
+  "lm.linear" = function(data)
+    lm(prop ~ vocab_prop * age - 1, data, y = TRUE),
+  "lm.quadratic" = function(data)
+    lm(prop ~ I(vocab_prop ^ 2) * age + vocab_prop * age - 1, data, y = TRUE),
+  "lm.cubic" = function(data)
+    lm(prop ~ I(vocab_prop ^ 3) * age + I(vocab_prop ^ 2) * age + vocab_prop * age - 1,
+       data, y = TRUE),
+  "rlm.linear" = function(data)
+    rlm(prop ~ vocab_prop * age - 1, data, vocab_prop = TRUE, maxit = 100),
+  "rlm.quadratic" = function(data)
+    rlm(prop ~ I(vocab_prop ^ 2) * age + vocab_prop * age - 1, data,
+        y.ret = TRUE, maxit = 100),
+  "rlm.cubic" = function(data)
+    rlm(prop ~ I(vocab_prop ^ 3) * age + I(vocab_prop ^ 2) * age + vocab_prop * age - 1,
+        data, y.ret = TRUE, maxit = 100)
+#  "glm" = function(data) glm(cbind(sum, diff) ~ vocab_prop + age, family = "binomial",
+#                             data, y = TRUE)
+)
+
+fit_models <- function(data, models, groups = NULL, extract_fun = NULL) {
+  if (length(groups)) {
+    data %<>% group_by_(.dots = groups)
+  }
+  model_dots <- map(models, function(model) interp(~fun(data = .), fun = model))
+  names <- names(models)
+  data %<>% do_(.dots = setNames(model_dots, names))
+  if (length(extract_fun)) {
+    extract_dots <- map(names(models),
+                        function(name) interp(~fun(var), fun = extract_fun,
+                                              var = as.name(name)))
+    data %<>% mutate_(.dots = setNames(extract_dots, names))
+  }
+  data
+}
+
+grammar_model_metrics <- fit_models(grammar_summary, models,
+                                    c("language", "measure"), adj_rsq) %>%
+  gather(model, adj_rsq, -language, -measure)
+
+best_models <- grammar_model_metrics %>%
+  group_by(language, measure) %>%
+  summarise(model = model[adj_rsq == max(adj_rsq)],
+            adj_rsq = max(adj_rsq))
+```
+
+Plot model metrics.
+```{r grammar_metrics_plot}
+ggplot(grammar_model_metrics, aes(x = model, y = adj_rsq, colour = model)) +
+  facet_grid(language ~ measure) +
+  geom_point() +
+  geom_hline(aes(yintercept = adj_rsq, colour = model), best_models) +
+  scale_colour_solarized() +
+  theme_bw(base_size = 14) +
+  theme(text = element_text(family = font))
 ```
 
 Fit grammar score models and use them to predict data.
 ```{r grammar_predict}
-grammar.models <- grammar.summary %>%
-  group_by(language, measure) %>%
-  do(model = glm(cbind(sum, diff) ~ vocab.mean + age.group,
-                 data = ., family="binomial"))
-
-get.grammar.model <- function(lang, meas) {
-  return(filter(grammar.models, language == lang, measure == meas)$model[[1]])
+generate_predictions <- function(grammar_summary) {
+  
+  grammar_models <- grammar_summary %>%
+    split(paste(.$language, .$measure, sep = "_")) %>%
+    map(function(lang_meas_data) {
+      lm(prop ~ I(vocab_prop ^ 3) * age + I(vocab_prop ^ 2) * age + vocab_prop * age - 1,
+         data = lang_meas_data)
+    })
+  
+  newdata <- expand.grid(language = levels(grammar_summary$language),
+                         measure = levels(grammar_summary$measure),
+                         age = seq(min_age, max_age),
+                         vocab_prop = seq(0, 1, vocab_step),
+                         stringsAsFactors = FALSE)
+  
+  group_predictions <- function(group) {
+    model_name <- paste(unique(group$language), unique(group$measure), sep = "_")
+    model <- grammar_models[[model_name]]
+    group %>% mutate(predicted = predict(model, group))
   }
+  
+  predicted_data <- newdata %>%
+    split(list(.$language, .$measure)) %>%
+    map(group_predictions) %>%
+    bind_rows()
+  
+  age_sizes <- grammar_summary %>%
+    group_by(age) %>%
+    summarise(n = n())
+  
+  breaks <- seq(min_age - 1, max_age, length = num_age_groups + 1)
+  predicted_data %>%
+    mutate(age_group = cut(
+      age, breaks = breaks,
+      labels = map(1:(length(breaks) - 1),
+                   function(i) paste("age", breaks[i], breaks[i + 1],
+                                     sep = "."))
+    )) %>%
+    left_join(age_sizes) %>%
+    group_by(language, measure, age_group, vocab_prop) %>%
+    summarise(predicted = weighted.mean(predicted, n))
+}
 
-grammar.predicted.data <- grammar.summary %>%
-  group_by(language, measure) %>%
-  mutate(predicted = invlogit(predict.lm(get.grammar.model(unique(language),
-                                                           unique(measure)),
-                                         data = ., family="binomial")))
+binned_grammar_summary <- grammar_summary %>%
+  mutate(age_group = cut(age, breaks = seq(min_age - 1, max_age,
+                                           length = num_age_groups + 1)))
+
+binned_grammar_predictions <- generate_predictions(grammar_summary) %>%
+  ungroup() %>%
+  mutate(age_group = unlist(map(as.character(age_group), format_group)))
 ```
 
 Plot score as a function of vocabulary size for each language and measure with model prediction curves.
-```{r grammar_data_plot, fig.width=8, fig.height=8}
-ggplot(grammar.predicted.data, aes(x = vocab.mean, y = mean, 
-                                   colour = age.group, fill = age.group,
-                                   label = age.group)) + 
-  geom_jitter(alpha=.3, size=.75) +
-  geom_line(aes(y=predicted),size=0.65) + 
-  facet_grid(language~measure) + 
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
+```{r grammar_predict_plot, fig.width=15, fig.height=17}
+ggplot(binned_grammar_summary,
+       aes(x = vocab_prop, y = prop, colour = age_group)) + 
+  geom_jitter(alpha = 0.3, size = 0.75) +
+  geom_line(aes(y = predicted), size = 0.65,
+            data = binned_grammar_predictions) +
+  facet_grid(language ~ measure) + 
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2),
                      name = "\nVocabulary Size") + 
-  scale_y_continuous(limits = c(0,1), breaks = seq(0,1,.25),
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25),
                      "Score (Mean Items)\n") + 
-  theme_bw(base_size = 11) +
-  theme(legend.position = c(0.055,0.925),
-        legend.text = element_text(size=9),
-        legend.title = element_text(size=9),
-        legend.key.height = unit(1, "char"),
-        legend.key.width = unit(0.4, "cm"),
+  theme_bw(base_size = 20) +
+  theme(legend.position = c(0.05, 0.95),
         legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text=element_text(family=font)) +
-  scale_color_brewer(type="div", palette=9,
-                     name="Age Group\n (months)") +
-  scale_fill_brewer(palette = "Spectral",
-                    guide=FALSE)
+        legend.background = element_rect(fill = "transparent"),
+        text = element_text(family = font)) +
+  scale_color_solarized(name = "Age Group\n (months)")
 ```
 
-Model comparison: fit grammar models and get their AICs and age coefficients.
-```{r grammar_models}
-grammar.model.metrics <- grammar.summary %>%
-  group_by(language, measure) %>%
-  do(model.vocab = glm(cbind(sum,diff) ~ vocab.mean, data = .,
-                       family="binomial"),
-     model.vocab.age = glm(cbind(sum,diff) ~ vocab.mean + age, data = .,
-                           family="binomial"),
-     model.vocab.age = glm(cbind(sum,diff) ~ vocab.mean * age, data = .,
-                           family="binomial")) %>%
-  mutate(AIC.vocab = AIC(model.vocab),
-         AIC.vocab.age = AIC(model.vocab.age),
-         deltaAIC = AIC.vocab - AIC.vocab.age,
-         age.coef = coef(model.vocab.age)["age"],
-         age.se = se.coef(model.vocab.age)["age"])
+Estimate area between curves.
+```{r grammar_diffs}
+calculate_area_diffs <- function(predicted) {
+  
+  age_groups <- levels(predicted$age_group)
+  dots <- map(1:(length(age_groups) - 1),
+              function(i) paste(age_groups[i + 1], age_groups[i], sep = " - "))
+  predicted %>%
+    group_by(language, measure, age_group) %>%
+    summarise(area = sum(predicted * vocab_step)) %>% 
+    spread(age_group, area) %>%
+    mutate_(.dots = dots) %>%
+    select_(.dots = paste0("-", age_groups)) %>%
+    gather(group, diff, -language, -measure)
+  
+}
+
+one_grammar_sample <- function(grammar_summary) {
+  function(k) {
+    grammar_summary %>%
+      group_by(language, measure) %>%
+      sample_frac(replace = TRUE) %>%
+      generate_predictions() %>%
+      calculate_area_diffs() %>%
+      mutate(sample = k)
+  }
+}
+
+get_grammar_area_diffs <- function(grammar_summary, nboot) {
+  map(1:nboot, one_grammar_sample(grammar_summary)) %>%
+    bind_rows() %>%
+    group_by(language, measure, group) %>%
+    summarise(mean = mean(diff),
+              ci_lower = ci_lower(diff),
+              ci_upper = ci_upper(diff)) %>%
+    mutate(group = unlist(map(as.character(group), format_group)))
+}
+
+grammar_area_diffs <- get_grammar_area_diffs(grammar_summary, 1000) %>%
+  ungroup() %>%
+  mutate(language = factor(language, levels = languages),
+         measure = factor(measure, levels = c("Word Form", "Complexity")))
 ```
 
-Show AICs of grammar models.
-```{r grammar_aic}
-kable(select(grammar.model.metrics,
-             language, measure, AIC.vocab, AIC.vocab.age, deltaAIC))
-```
-
-Plot age effect coefficients for each language and measure.
-```{r grammar_coef_plot, fig.width=6, fig.height=4}
-ggplot(grammar.model.metrics, 
-       aes(x=language, y=age.coef, fill=measure)) + 
-  geom_bar(position="dodge", stat="identity") + 
-  geom_linerange(aes(ymin=age.coef-1.96*age.se, ymax=age.coef+1.96*age.se), 
-                 position = position_dodge(width=.9)) +
-  ylab("Age effect coefficient") + 
+Plot age fan estimates for each language and measure.
+```{r grammar_diffs_plot, fig.width=10, fig.height=5}
+ggplot(grammar_area_diffs, aes(x = language, y = mean, fill = measure)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
+                 position = position_dodge(width = 0.9)) +
+  scale_fill_solarized(name = "") +
+  ylab("Area between age groups\n") +
   xlab("") +
-  theme_bw(base_size = 14) +
-  scale_fill_brewer(palette="Set2",
-                    name="Measure") +
-  theme(legend.position = c(0.15,0.86),
-        legend.text = element_text(size=14),
-        legend.title = element_text(size=15),
-        legend.key.height = unit(1.5, "char"),
+  theme_bw(base_size = 20) +
+  theme(legend.position = c(0.1,0.9),
         legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text=element_text(family=font))
+        legend.background = element_rect(fill = "transparent"),
+        text = element_text(family = font))
 ```
 
-Fit models for each wordform and complexity item and get their age coefficients.
-```{r item_models}
-item.models <- grammar.data %>%
-  group_by(language, item, coded.type) %>%
-  do(model = glm(value ~ vocab.mean + age, data = ., family = "binomial")) %>%
-  mutate(coef = coef(model)["age"],
-         se = se.coef(model)["age"])
-```
-
-Function for plotting age effect coefficients by item for a language.
-```{r item_coef_plot_fun}
-plot.item.coefs <- function(item.models, lang) {
+Fit per-item models and use them to predict data.
+```{r item_predict}
+generate_item_predictions <- function(grammar_data) {
   
-  lang.item.models <- filter(item.models, language == lang) %>%
-    arrange(coef) %>%
-    mutate(item = factor(item, levels=item))
+  item_models <- grammar_data %>%
+    split(paste(.$language, .$item, sep = "_")) %>%
+    map(function(lang_item_data)
+      lm(value ~ I(vocab_prop ^ 3) * age + I(vocab_prop ^ 2) * age + vocab_prop * age - 1,
+         data = lang_item_data)
+    )
   
-  item.plot <- ggplot(lang.item.models,
-                      aes(x=item, y=coef, fill=coded.type, label=item)) +
-    geom_bar(stat="identity", position="identity", alpha=.5, width=0.9) +
-    geom_linerange(aes(ymin=coef-1.96*se, ymax=coef+1.96*se),
-                   position = position_dodge(width=.9)) +
-    theme_bw(base_size = 12) +
-    scale_y_continuous(name="Age Effect Coefficient") +
-    scale_x_discrete(name="",breaks=NULL) +
-    annotate("text", x = length(lang.item.models$item)/2,
-             y = min(lang.item.models$coef-1.96*lang.item.models$se), vjust=0,
-             label = lang, size = 9, family=font) +
-    scale_fill_brewer(palette="Set2", name="Item Type", drop=FALSE) +
-    theme(legend.position = c(0.22,0.82),
-          legend.text = element_text(size=14),
-          legend.title = element_text(size=13),
-          legend.key = element_blank(),
-          legend.key.height = unit(1.5, "char"),
-          text = element_text(family=font),
-          axis.title.y = element_text(size=16),
-          axis.text.y = element_text(size=13))
+  items <- grammar_data %>%
+    select(language, item, coded_type) %>%
+    distinct()
   
-  return(item.plot)
+  ages <- seq(min_age, max_age)
+  vocab_props <- seq(0, 1, vocab_step)
+  nrep <- length(ages) * length(vocab_props)
   
+  newdata_items <- data.frame(language = rep(items$language, nrep),
+                              item = rep(items$item, nrep)) %>%
+    arrange(language, item)
+  
+  newdata_demos <- expand.grid(age = ages,
+                               vocab_prop = vocab_props)
+  
+  newdata <- bind_cols(newdata_items,
+                       data.frame(age = rep(newdata_demos$age, nrow(items)),
+                                  vocab_prop = rep(newdata_demos$vocab_prop,
+                                                   nrow(items))))
+  
+  lang_item_predictions <- function(lang_item_data) {
+    model <- item_models[[paste(unique(lang_item_data$language),
+                                unique(lang_item_data$item),
+                                sep = "_")]]
+    lang_item_data %>% mutate(predicted = predict(model, lang_item_data))
   }
+  
+  predicted_data <- newdata %>%
+    split(paste(.$language, .$item, sep = "_")) %>%
+    map(lang_item_predictions) %>%
+    bind_rows() %>%
+    left_join(items)
+  
+  age_sizes <- grammar_data %>%
+    select(data_id, age) %>%
+    filter(age >= min_age, age <= max_age) %>%
+    distinct() %>%
+    group_by(age) %>%
+    summarise(n = n())
+  
+  breaks <- seq(min_age - 1, max_age, length = num_age_groups + 1)
+  predicted_data %>%
+    mutate(age_group = cut(age,
+                           breaks = breaks,
+                           labels = map(
+                             1:(length(breaks) - 1),
+                             function(i) paste("age", breaks[i], breaks[i + 1],
+                                               sep = ".")))) %>%
+    left_join(age_sizes) %>%
+    group_by(language, item, coded_type, age_group, vocab_prop) %>%
+    summarise(predicted = weighted.mean(predicted, n))
+}
 ```
 
-Plot item interactions for Norwegian.
-```{r item_coef_plot_norwegian, fig.width=8, fig.height=4}
-plot.item.coefs(item.models, "Norwegian")
-```
+Estimate area between curves.
+```{r item_diffs}
+calculate_item_area_diffs <- function(item_predictions) {
+  
+  age_groups <- levels(item_predictions$age_group)
+  dots <- map(1:(length(age_groups) - 1),
+              function(i) paste(age_groups[i + 1], age_groups[i], sep = " - "))
+  item_predictions %>%
+    group_by(language, item, coded_type, age_group) %>%
+    summarise(area = sum(predicted * vocab_step)) %>% 
+    spread(age_group, area) %>%
+    mutate_(.dots = dots) %>%
+    select_(.dots = paste0("-", age_groups)) %>%
+    gather(group, diff, -language, -item, -coded_type)
+  
+}
 
-Plot item interactions for English.
-```{r item_coef_plot_english, fig.width=8, fig.height=4}
-plot.item.coefs(item.models, "English")
-```
-
-Plot item interactions for Danish.
-```{r item_coef_plot_danish, fig.width=8, fig.height=4}
-plot.item.coefs(item.models, "Danish")
-```
-
-Plot item interactions for Spanish.
-```{r item_coef_plot_spanish, fig.width=8, fig.height=4}
-plot.item.coefs(item.models, "Spanish")
-```
-
-
-***
-
-## Analysis 2: Vocabulary Composition
-
-Get vocabulary composition data for all languages.
-```{r vocab_summary}
-get.vocab.composition <- function(lang) {
-  
-  lang.vocab.items <- filter(items, language == lang, form == "WS", type == "word") %>%
-    filter(lexical_category != "other") %>%
-    rename(column = item.id) %>%
-    mutate(item.id = as.numeric(substr(column, 6, nchar(column))))
-  
-  lang.instrument.table <- filter(instrument.tables, language == lang,
-                                  form == "WS")$table[[1]]
-  
-  lang.vocab.data <- get.instrument.data(lang.instrument.table,
-                                         lang.vocab.items$column) %>%
-    left_join(select(lang.vocab.items, item.id, lexical_category, item, definition)) %>%
-    mutate(value = ifelse(is.na(value), "", value),
-           value = get.value("word", value))
-  
-  num.words <- nrow(lang.vocab.items)
-  
-  lang.admins <- admins %>%
-    filter(language == lang) %>%
-    select(data_id, age, age.group, language)
-  
-  lang.vocab.summary <- left_join(lang.vocab.data, lang.admins) %>%
-    filter(age > 15 & age < 32) %>%
-    group_by(data_id, age, age.group, language, lexical_category) %>%
-    summarise(sum = sum(value),
-              diff = length(value) - sum,
-              mean = sum / length(value))
-  
-  lang.vocab.sizes <- lang.vocab.summary %>%
-    summarise(vocab.mean = sum(sum) / num.words)
-  
-  return(left_join(lang.vocab.summary, lang.vocab.sizes))
-    
+one_item_sample <- function(grammar_data) {
+  function(k) {
+    grammar_data %>%
+      group_by(language, item, coded_type) %>%
+      sample_frac(replace = TRUE) %>%
+      generate_item_predictions() %>%
+      calculate_item_area_diffs() %>%
+      mutate(sample = k)
   }
+}
 
-vocab.composition <- bind_rows(sapply(languages, get.vocab.composition,
-                                      simplify = FALSE)) %>%
-  filter(lexical_category != "unknown",
-         lexical_category != "other") %>%
-  mutate(lexical_category = factor(lexical_category,
-                                   levels=c("nouns", "predicates", "function_words"),
-                                   labels=c("Nouns", "Predicates", "Function Words")))
+get_item_area_diffs <- function(grammar_data, nboot) {
+  map(1:nboot, one_item_sample(grammar_data)) %>%
+    bind_rows() %>%
+    filter(!is.na(diff)) %>%
+    group_by(language, item, coded_type, group) %>%
+    summarise(mean = mean(diff),
+              ci_lower = ci_lower(diff),
+              ci_upper = ci_upper(diff)) %>%
+    mutate(group = unlist(map(as.character(group), format_group)))
+}
+
+item_area_diffs <- get_item_area_diffs(grammar_data, 1000) %>%
+  ungroup() %>%
+  arrange(language, mean) %>%
+  mutate(order_item = paste(language, item, sep = "_"),
+         order_item = factor(order_item, levels = order_item))
 ```
 
-Fit vocabulary composition models and use them to predict data.
-```{r vocab_predict}
-vocab.models <- vocab.composition %>%
-  group_by(language, lexical_category) %>%
-  do(model = glm(cbind(sum, diff) ~ vocab.mean,
-                 data = ., family = "binomial"))
-
-get.vocab.model <- function(lang, cat) {
-  return(filter(vocab.models, language == lang, lexical_category == cat)$model[[1]])
-  }
-
-vocab.predicted.data <- vocab.composition %>%
-  group_by(language, lexical_category) %>%
-  mutate(predicted = inv.logit(predict.lm(get.vocab.model(unique(language),
-                                                         unique(lexical_category)),
-                                         data = ., family = "binomial")))
-```
-
-Plot vocabulary composition as a function of vocabulary size for each language with model prediction curves.
-```{r vocab_data_plot, fig.width=10, fig.height=2.9}
-ggplot(vocab.predicted.data,
-       aes(x=vocab.mean, y=mean, colour=lexical_category, label=lexical_category)) +
-  geom_jitter(alpha=0.15, size=.75) +
-  geom_line(aes(y=predicted),size=0.65) + 
-  facet_wrap(~ language, nrow = 1, ncol = 4) +
-  scale_y_continuous(limits = c(0, 1.05), breaks = seq(0,1,.2),
-                     name = "Proportion of Category\n") +
-  scale_x_continuous(limits = c(0,1), breaks = seq(0,1,.2),
-                     name = "\nVocabulary Size") +
-  theme_bw(base_size=12) + 
-  theme(legend.position = c(0.065,0.83),
-        legend.text = element_text(size=9),
-        legend.title = element_text(size=9, lineheight=unit(0.7, "char")),
-        legend.key.height = unit(0.8, "char"),
-        legend.key.width = unit(0.3, "cm"),
+Plot age fan estimates for each item.
+```{r item_diffs_plot, fig.width=15, fig.height=9}
+ggplot(item_area_diffs, aes(x = order_item, y = mean, fill = coded_type)) +
+  facet_wrap(~language, scales = "free_x") +
+  geom_bar(position = "dodge", stat = "identity", width = 0.75) +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
+                 position = position_dodge(width = 0.9)) +
+  scale_fill_solarized(name = "") +
+  scale_x_discrete(name = "", breaks = NULL) +
+  ylab("Area between age groups\n") +
+  theme_bw(base_size = 20) +
+  theme(legend.position = c(0.12, 0.95),
         legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text = element_text(family=font)) +
-  scale_color_brewer(palette = "Set2", name = "Lexical Category")
-```
-
-Fit vocabulary composition models and get their AICs and age coefficients.
-```{r vocab_models}
-vocab.model.metrics <- vocab.composition %>%
-  group_by(language, lexical_category) %>%
-  do(model.vocab = glm(cbind(sum, diff) ~ vocab.mean, data = .,
-                       family="binomial"),
-     model.vocab.age = glm(cbind(sum, diff) ~ vocab.mean + age, data = .,
-                           family="binomial")) %>%
-  mutate(AIC.vocab = AIC(model.vocab),
-         AIC.vocab.age = AIC(model.vocab.age),
-         deltaAIC = AIC.vocab - AIC.vocab.age,
-         age.coef = coef(model.vocab.age)["age"],
-         age.se = se.coef(model.vocab.age)["age"])
-```
-
-Show AICs of vocabulary composition models.
-```{r vocab_aic}
-kable(select(vocab.model.metrics,
-             language, lexical_category, AIC.vocab, AIC.vocab.age, deltaAIC))
-```
-
-Plot age effect coefficients for each language and lexical category.
-```{r vocab_coef_plot, fig.width=6, fig.height=4}
-ggplot(vocab.model.metrics, 
-       aes(x=language, y=age.coef, fill=lexical_category)) + 
-  geom_bar(position="dodge", stat="identity") + 
-  geom_linerange(aes(ymin=age.coef-1.96*age.se, ymax=age.coef+1.96*age.se), 
-                 position = position_dodge(width=.9)) +
-  ylab("Age effect coefficient") + 
-  xlab("") +
-  theme_bw(base_size = 14) +
-  scale_fill_brewer(palette = "Set2",
-                    name = "Lexical Category") +
-  theme(legend.position = c(0.17,0.85),
-        legend.text = element_text(size=13),
-        legend.title = element_text(size=13),
-        legend.key.height = unit(1.2, "char"),
-        legend.key = element_blank(),
-        legend.background = element_rect(fill="transparent"),
-        text = element_text(family=font))
+        legend.background = element_rect(fill = "transparent"),
+        text = element_text(family = font))
 ```

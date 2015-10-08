@@ -27,3 +27,5 @@ $*.xlsx
 # knitr cache
 *_cache
 
+.Rproj.user
+*.Rproj

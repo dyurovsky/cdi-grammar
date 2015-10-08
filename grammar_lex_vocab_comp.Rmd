@@ -1,0 +1,187 @@
+***
+
+## Analysis 2: Vocabulary Composition
+
+Get vocabulary composition data for all languages.
+```{r vocab_comp}
+get.lang.vocab.comp <- function(input_language) {
+  
+  lang.vocab.items <- filter(items, language == input_language, form == "WS") %>%
+    filter(lexical_category %in% c("nouns", "predicates", "function_words")) %>%
+    rename(column = item.id) %>%
+    mutate(item.id = as.numeric(substr(column, 6, nchar(column))))
+  
+  lang.instrument.table <- filter(instrument.tables,
+                                  language == input_language,
+                                  form == "WS")$table[[1]]
+  
+  lang.vocab.data <- get.instrument.data(lang.instrument.table,
+                                         lang.vocab.items$column) %>%
+    left_join(select(lang.vocab.items, item.id, lexical_category, item, definition)) %>%
+    mutate(value = ifelse(is.na(value), "", value),
+           produces = value == "produces")
+  
+  num.words <- nrow(lang.vocab.items)
+  
+  lang.vocab.summary <- lang.vocab.data %>%
+    group_by(data_id, lexical_category) %>%
+    summarise(num = sum(produces),
+              prop = sum(produces) / length(produces))
+  
+  lang.vocab.sizes <- lang.vocab.summary %>%
+    summarise(vocab.mean = sum(num) / num.words)
+  
+  lang.admins <- admins %>%
+    filter(language == input_language) %>%
+    select(data_id, age)
+  
+  lang.vocab.summary %>%
+    left_join(lang.vocab.sizes) %>%
+    select(-num) %>%
+    right_join(lang.admins) %>%
+    mutate(language = input_language)
+  
+  }
+
+vocab.comp <- map(languages, get.lang.vocab.comp) %>%
+  bind_rows() %>%
+  mutate(language = factor(language, levels = languages),
+         lexical_category = factor(lexical_category,
+                                   levels = c("nouns", "predicates", "function_words"),
+                                   labels = c("Nouns", "Predicates", "Function Words")))
+```
+
+```{r vocab_comp_predict}
+generate.vocab.comp.predictions <- function(vocab.comp.df, min.age, max.age, num.age_groups) {
+  
+  models <- vocab.comp.df %>%
+    filter(age >= min.age, age <= max.age) %>%
+    group_by(language, lexical_category) %>%
+    do(model = clm(prop ~ I(vocab.mean^3) * age + I(vocab.mean^2) * age + vocab.mean * age - 1,
+                  data = .))
+  
+  newdata <- expand.grid(language = levels(vocab.comp.df$language),
+                         lexical_category = levels(vocab.comp.df$lexical_category),
+                         age = seq(min.age, max.age),
+                         vocab.mean = seq(0, 1, vocab.step),
+                         stringsAsFactors = FALSE)
+  
+  group.predictions <- function(group) {
+    model <- filter(models, language == unique(group$language),
+                    lexical_category == unique(group$lexical_category))$model[[1]]
+    group %>% mutate(predicted = predict(model, group))
+  }
+  
+  predicted.data <- newdata %>%
+    split(list(.$language, .$lexical_category)) %>%
+    map(group.predictions) %>%
+    bind_rows()
+  
+  age.sizes <- vocab.comp.df %>%
+    filter(age >= min.age, age <= max.age) %>%
+    group_by(age) %>%
+    summarise(n = n())
+  
+  breaks <- seq(min.age - 1, max.age, length = num.age_groups + 1)
+  predicted.data %>%
+    mutate(age_group = cut(age,
+                           breaks = breaks,
+                           labels = map(1:(length(breaks)-1),
+                                        function(i) {paste("age", breaks[i], breaks[i+1],
+                                                          sep = ".")}))) %>%
+    left_join(age.sizes) %>%
+    group_by(language, lexical_category, age_group, vocab.mean) %>%
+    summarise(predicted = weighted.mean(predicted, n))
+}
+
+binned.vocab.comp <- vocab.comp %>%
+  filter(age >= min.age, age <= max.age) %>%
+  mutate(age_group = cut(age, breaks = seq(min.age - 1, max.age, length = num.age_groups + 1)))
+
+binned.predicted.vocab.comp <- generate.vocab.comp.predictions(vocab.comp, min.age, max.age,
+                                                               num.age_groups) %>%
+  ungroup() %>%
+  mutate(age_group = unlist(map(as.character(age_group), format.group)))
+```
+
+```{r vocab_data_plot, fig.width=10, fig.height=2.9}
+ggplot(binned.vocab.comp,
+       aes(x = vocab.mean, y = prop, colour = lexical_category)) +
+  geom_jitter(alpha = 0.15, size = 0.75) +
+  geom_smooth(method = "clm", formula = y ~ I(x^3) + I(x^2) + x - 1) +
+#  geom_line(aes(y = predicted), size = 0.65, data = binned.predicted.vocab.comp) + 
+  facet_wrap(~ language, nrow = 1, ncol = 4) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2),
+                     name = "Proportion of Category\n") +
+  scale_x_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2),
+                     name = "\nVocabulary Size") +
+  scale_colour_solarized(name = "") +
+  theme_bw(base_size = 20) + 
+  theme(legend.position = c(0.072, 0.92),
+        legend.key = element_blank(),
+        legend.background = element_rect(fill = "transparent"),
+        text = element_text(family = font))
+ggsave("poster/vocab_comp.png", width = 1120/72, height = 400/72, dpi = 300)
+```
+
+Estimate area between curves.
+```{r vocab_comp_diffs}
+calculate.vocab.comp.area.diffs <- function(predicted.vocab.comp.df) {
+  
+  age_groups <- unique(predicted.vocab.comp.df$age_group)
+  dots <- map(1:(length(age_groups)-1),
+              function(i) paste(age_groups[i+1], age_groups[i], sep = " - "))
+  predicted.vocab.comp.df %>%
+    group_by(language, lexical_category, age_group) %>%
+    summarise(area = sum(predicted * vocab.step)) %>% 
+    spread(age_group, area) %>%
+    mutate_(.dots = dots) %>%
+    select_(.dots = paste0("-", age_groups)) %>%
+    gather(group, diff, -language, -lexical_category)
+  
+}
+
+one.vocab.comp.sample <- function(min.age, max.age, num.age_groups) {
+  function(k) {
+    vocab.comp %>%
+      group_by(language, lexical_category) %>%
+      sample_frac(replace = TRUE) %>%
+      generate.vocab.comp.predictions(vocab.comp.df = ., min.age = min.age, max.age = max.age,
+                                      num.age_groups = num.age_groups) %>%
+      calculate.vocab.comp.area.diffs() %>%
+      mutate(sample = k)
+  }
+}
+
+get.vocab.comp.area.diffs <- function(nboot, min.age, max.age, num.age_groups) {
+  map(1:nboot, one.vocab.comp.sample(min.age, max.age, num.age_groups)) %>%
+    bind_rows() %>%
+    group_by(language, lexical_category, group) %>%
+    summarise(mean = mean(diff),
+              ci_lower = ci_lower(diff),
+              ci_upper = ci_upper(diff)) %>%
+    mutate(group = unlist(map(as.character(group), format.group)))
+  }
+
+vocab.comp.area.diffs <- get.vocab.comp.area.diffs(1000, min.age, max.age, num.age_groups) %>%
+  ungroup() %>%
+  mutate(language = factor(language, levels = languages),
+         lexical_category = factor(lexical_category, levels = c("Nouns", "Predicates", "Function Words")))
+```
+
+Plot age fan estimates for each language and lexical category.
+```{r grammar_diffs_plot, fig.width=6, fig.height=4}
+ggplot(vocab.comp.area.diffs, aes(x = language, y = mean, fill = lexical_category)) +
+  geom_bar(position = "dodge", stat = "identity") +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper), 
+                 position = position_dodge(width = 0.9)) +
+  scale_fill_solarized(name = "") +
+  ylab("Area between age groups\n") +
+  xlab("") +
+  theme_bw(base_size = 20) +
+   theme(legend.position = c(0.12,0.9),
+         legend.key = element_blank(),
+         legend.background = element_rect(fill = "transparent"),
+         text = element_text(family = font))
+ggsave("poster/vocab_comp_diffs.png", width = 740/72, height = 340/72, dpi = 300)
+```
