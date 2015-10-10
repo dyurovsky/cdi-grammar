@@ -24,8 +24,9 @@ $*.xlsx
 *.pdf
 *.out
 
-# knitr cache
-*_cache
+# knitr cache and files
+*_cache/
+*_files/
 
 .Rproj.user
 *.Rproj

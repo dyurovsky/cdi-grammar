@@ -20,8 +20,7 @@ library(lazyeval)
 library(magrittr)
 library(langcog)
 library(wordbankr)
-font <- "Open Sans"
-theme_set(theme_bw())
+theme_set(theme_mikabr())
 ```
 
 ***
@@ -298,11 +297,9 @@ ggplot(binned_grammar_summary,
                      name = "\nVocabulary Size") + 
   scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25),
                      "Score (Mean Items)\n") + 
-  theme_bw(base_size = 20) +
   theme(legend.position = c(0.05, 0.95),
         legend.key = element_blank(),
-        legend.background = element_rect(fill = "transparent"),
-        text = element_text(family = font)) +
+        legend.background = element_rect(fill = "transparent")) +
   scale_color_solarized(name = "Age Group\n (months)")
 ```
 
@@ -359,11 +356,9 @@ ggplot(grammar_area_diffs, aes(x = language, y = mean, fill = measure)) +
   scale_fill_solarized(name = "") +
   ylab("Area between age groups\n") +
   xlab("") +
-  theme_bw(base_size = 20) +
   theme(legend.position = c(0.1,0.9),
         legend.key = element_blank(),
-        legend.background = element_rect(fill = "transparent"),
-        text = element_text(family = font))
+        legend.background = element_rect(fill = "transparent"))
 ```
 
 Fit per-item models and use them to predict data.
@@ -487,9 +482,7 @@ ggplot(item_area_diffs, aes(x = order_item, y = mean, fill = coded_type)) +
   scale_fill_solarized(name = "") +
   scale_x_discrete(name = "", breaks = NULL) +
   ylab("Area between age groups\n") +
-  theme_bw(base_size = 20) +
   theme(legend.position = c(0.12, 0.95),
         legend.key = element_blank(),
-        legend.background = element_rect(fill = "transparent"),
-        text = element_text(family = font))
+        legend.background = element_rect(fill = "transparent"))
 ```
