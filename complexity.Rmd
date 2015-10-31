@@ -1,0 +1,113 @@
+```{r}
+get_complexity_data <- function(inst_items) {
+  inst_language <- unique(inst_items$language)
+  inst_form <- unique(inst_items$form)
+  inst_admins <- filter(admins, language == inst_language, form == inst_form)
+  get_instrument_data(instrument_language = inst_language,
+                      instrument_form = inst_form,
+                      items = inst_items$item_id,
+                      administrations = inst_admins,
+                      iteminfo = inst_items,
+                      mode = data_mode) %>%
+    filter(!is.na(age)) %>%
+    mutate(complex = !is.na(value) & value == "complex") %>%
+    select(-value) %>%
+    mutate(language = inst_language,
+           form = inst_form)
+}
+
+complexity_raw_data <- items %>%
+  filter(type == "complexity") %>%
+  split(.$language) %>%
+  map(get_complexity_data)
+
+fit_lang_item_complexity <- function(lang_item_complexity_data) {
+  ages <- min(lang_item_complexity_data$age):max(lang_item_complexity_data$age)
+  model <- glm(cbind(num_true, num_false) ~ age, family = "binomial",
+               data = lang_item_complexity_data)
+  fit <- predict(model, newdata = data.frame(age = ages), se.fit = TRUE)
+  aoa <- -model$coefficients[["(Intercept)"]] / model$coefficients[["age"]]
+  constants <- lang_item_complexity_data %>%
+    select(language, complexity_category, item_id, definition) %>%
+    distinct()
+  props <- lang_item_complexity_data %>%
+    ungroup() %>%
+    select(age, prop)
+  data.frame(age = ages, fit_prop = inv.logit(fit$fit), fit_se = fit$se.fit,
+             aoa = aoa, language = constants$language,
+             complexity_category = constants$complexity_category,
+             item_id = constants$item_id, definition = constants$definition) %>%
+    left_join(props)
+}
+
+fit_lang_complexity <- function(lang_complexity_data) {
+  lang_complexity_summary <- lang_complexity_data %>%
+    group_by(language, item_id, definition, complexity_category, age) %>%
+    summarise(num_true = sum(complex, na.rm = TRUE),
+              num_false = n() - num_true,
+              prop = mean(complex, na.rm = TRUE))
+  lang_complexity_summary %>%
+    split(.$item_id) %>%
+    map(fit_lang_item_complexity) %>%
+    bind_rows()
+}
+
+%>%
+multi_boot(summary_function = "",
+           column = complex,
+           summary_groups = )
+#lang_item_complexity_data <- filter(lang_complexity_summary, item_id == "item_761")
+complexity_prop_data <- complexity_raw_data %>%
+  map(fit_lang_complexity) %>%
+  bind_rows()
+
+complexity_aoa_data <- complexity_prop_data %>%
+  select(language, complexity_category, item_id, definition, aoa) %>%
+  distinct() %>%
+  arrange(language, aoa) %>%
+  mutate(order_item = paste(language, item_id, sep = "_"),
+         order_item = factor(order_item, levels = order_item))
+
+complexity_aoa_summary <- complexity_aoa_data %>%
+  group_by(language, complexity_category) %>%
+  summarise(mean = mean(aoa),
+            ci_lower = ci_lower(aoa),
+            ci_upper = ci_upper(aoa))
+
+complexity_aoa_data %>%
+  filter(language != "Spanish") %>%
+  split(.$language) %>%
+  map(function(lang_data) {
+    t.test(filter(lang_data, complexity_category == "morphology")$aoa,
+           filter(lang_data, complexity_category == "syntax")$aoa)
+  })
+```
+
+```{r}
+ggplot(complexity_prop_data, aes(x = prop, y = fit_prop, colour = complexity_category)) +
+  facet_wrap(~language) +
+  geom_point() +
+  geom_smooth(method = "lm") +
+  scale_colour_solarized()
+```
+
+```{r}
+ggplot(complexity_aoa_data, aes(x = aoa, y = order_item, colour = complexity_category)) +
+  facet_wrap(~language, scales = "free_y") +
+  geom_point() +
+  #geom_bar(stat = "identity") +
+  scale_colour_solarized() +
+  scale_y_discrete(name = "", breaks = NULL) +
+  scale_x_continuous(name = "Age of Acquisition (months)\n") + #, limits = c(24, 40), breaks = c(24, 40)) +
+  theme(text = element_text(family = font))
+```
+
+```{r}
+ggplot(complexity_aoa_summary, aes(x = complexity_category, y = mean, colour = complexity_category)) +
+  facet_wrap(~language) +
+  #geom_bar(stat = "identity") +
+  #geom_point() +
+  geom_linerange(aes(ymin = ci_lower, ymax = ci_upper)) +
+  geom_pointrange(aes(ymin = ci_lower, ymax = ci_upper)) +
+  scale_colour_solarized()
+```
